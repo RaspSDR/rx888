@@ -4,7 +4,7 @@ if (MSVC)
   set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS TRUE)
 endif (MSVC)
 
-include_directories("." "../Core")
+include_directories("." "../core")
 
 add_library(sddc SHARED
     libsddc.cpp

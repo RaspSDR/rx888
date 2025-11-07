@@ -72,11 +72,11 @@ endif (MSVC)
 
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -D_DEBUG")
 
-add_subdirectory(Core)
-add_subdirectory(libsddc)
-add_subdirectory(unittest)
+add_subdirectory(src/core)
+add_subdirectory(src/libsddc)
+add_subdirectory(src/tests)
 
 if (MSVC)
-    add_subdirectory(ExtIO_sddc)
+    add_subdirectory(src/extio)
 endif()
-add_subdirectory(SoapySDDC)
+add_subdirectory(src/soapy)

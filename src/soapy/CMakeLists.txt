@@ -4,7 +4,7 @@ find_package(SoapySDR CONFIG)
 
 if (SoapySDR_FOUND)
 
-    include_directories("." "../Core")
+    include_directories("." "../core")
 
     SOAPY_SDR_MODULE_UTIL(
         TARGET SDDCSupport

@@ -1,5 +1,5 @@
 #pragma once
-#include "../Core/config.h"
+#include "../core/config.h"
 #include <SoapySDR/Device.hpp>
 #include <SoapySDR/Types.h>
 #include <atomic>

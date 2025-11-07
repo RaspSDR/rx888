@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.13)
 
 file(GLOB SRC "*.cpp" extio.def resource.rc manifest.xml)
 
-include_directories("." "../Core")
+include_directories("." "../core")
 
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -D_DEBUG")
 

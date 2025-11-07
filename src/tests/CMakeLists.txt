@@ -1,27 +1,13 @@
 cmake_minimum_required(VERSION 3.13)
 
-include(ExternalProject)
-ExternalProject_Add(
-    LIBCPPUNIT
-    GIT_REPOSITORY https://github.com/drleq/CppUnitTestFramework.git
-    GIT_TAG 1.2.2
-    CONFIGURE_COMMAND   ""
-    BUILD_COMMAND       ""
-    INSTALL_COMMAND     ""
-)
-ExternalProject_Get_Property(LIBCPPUNIT SOURCE_DIR)
-SET(LIBCPPUNIT_INCLUDE_DIRS ${SOURCE_DIR})
-
 file(GLOB UNITTESTS "./*.cpp")
 
 add_executable(unittest ${UNITTESTS})
-add_dependencies(unittest LIBCPPUNIT)
 
 target_include_directories(unittest PUBLIC "${LIBFFTW_INCLUDE_DIR}")
 target_link_directories(unittest PUBLIC "${LIBFFTW_LIBRARY_DIRS}")
 
-include_directories("." "../Core")
-include_directories(${LIBCPPUNIT_INCLUDE_DIRS})
+include_directories("." "../core")
 
 target_link_libraries(unittest PRIVATE SDDC_CORE)
 if (MSVC)

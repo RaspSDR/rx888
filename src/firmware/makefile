@@ -14,7 +14,7 @@
 ## installation root directory path.
 ##
 
-FX3FWROOT?=../SDK
+FX3FWROOT?=../../SDK
 ARMGCC_INSTALL_PATH?=/usr
 ARMGCC_VERSION?=$(shell arm-none-eabi-gcc --version | grep gcc | sed -n -e 's/.*\([0-9]\.[0-9]*\.[0-9]*\).*/\1/p' )
 
