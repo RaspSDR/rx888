@@ -33,12 +33,12 @@ jobs:
 
     - name: Build firmware
       shell: bash
-      run: make -C ./SDDC_FX3
+      run: make -C src/firmware
 
     - uses: actions/upload-artifact@v4
       with:
         name: firmware
-        path: ./SDDC_FX3/SDDC_FX3.img
+        path: ./src/firmware/SDDC_FX3.img
 
   build-on-windows:
     # The CMake configure and build commands are platform agnostic and should work equally

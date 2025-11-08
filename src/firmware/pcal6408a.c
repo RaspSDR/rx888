@@ -1,8 +1,8 @@
-#include "cyu3types.h"
 #include "pcal6408a.h"
+#include "cyu3types.h"
 #include "i2cmodule.h"
 
-#define PCAL6408A_ADDR 0x42  
+#define PCAL6408A_ADDR 0x42
 #define INPUT_PORT_REG 0x00
 #define OUTPUT_PORT_REG 0x01
 #define POLARITY_INVERTION 0x02
@@ -17,21 +17,19 @@
 #define INTERRUPT_STATUS 0x46
 #define OUTPUT_PORT_OC 0x4F
 
-
 void PCAL6408A_Init() {
-  I2cTransferW1 ( CONFIGURATION_REG , PCAL6408A_ADDR, 0xf0 ); // IO 0,1,2,3 out
-  I2cTransferW1 ( POLARITY_INVERTION , PCAL6408A_ADDR, 0x0 ); 
-  I2cTransferW1 ( OUT_DRIVE_STRN0 , PCAL6408A_ADDR, 0xff ); 
-  I2cTransferW1 ( OUT_DRIVE_STRN1 , PCAL6408A_ADDR, 0xff ); 
-  I2cTransferW1 ( INPUT_LATCH_REG , PCAL6408A_ADDR, 0x0 );  
-  I2cTransferW1 ( PUPD_ENB_REG , PCAL6408A_ADDR, 0x0 ); 
-  I2cTransferW1 ( PUPD_SEL_REG , PCAL6408A_ADDR, 0x0 ); 
-  I2cTransferW1 ( INTERRUPT_MASK , PCAL6408A_ADDR, 0xff ); 
-  I2cTransferW1 ( OUTPUT_PORT_OC , PCAL6408A_ADDR, 0x0 ); 
-  I2cTransferW1 ( OUTPUT_PORT_REG , PCAL6408A_ADDR, 0x0 );
+  I2cTransferW1(CONFIGURATION_REG, PCAL6408A_ADDR, 0xf0); // IO 0,1,2,3 out
+  I2cTransferW1(POLARITY_INVERTION, PCAL6408A_ADDR, 0x0);
+  I2cTransferW1(OUT_DRIVE_STRN0, PCAL6408A_ADDR, 0xff);
+  I2cTransferW1(OUT_DRIVE_STRN1, PCAL6408A_ADDR, 0xff);
+  I2cTransferW1(INPUT_LATCH_REG, PCAL6408A_ADDR, 0x0);
+  I2cTransferW1(PUPD_ENB_REG, PCAL6408A_ADDR, 0x0);
+  I2cTransferW1(PUPD_SEL_REG, PCAL6408A_ADDR, 0x0);
+  I2cTransferW1(INTERRUPT_MASK, PCAL6408A_ADDR, 0xff);
+  I2cTransferW1(OUTPUT_PORT_OC, PCAL6408A_ADDR, 0x0);
+  I2cTransferW1(OUTPUT_PORT_REG, PCAL6408A_ADDR, 0x0);
 }
 
-void PCAL6408A_write(uint8_t gpios){	
-  I2cTransferW1 ( OUTPUT_PORT_REG , PCAL6408A_ADDR, gpios );	
+void PCAL6408A_write(uint8_t gpios) {
+  I2cTransferW1(OUTPUT_PORT_REG, PCAL6408A_ADDR, gpios);
 }
-
