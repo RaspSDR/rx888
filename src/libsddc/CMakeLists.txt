@@ -16,6 +16,23 @@ set_target_properties(sddc PROPERTIES SOVERSION 0)
 
 add_library(wavewriter STATIC wavewrite.c)
 
+include(GNUInstallDirs)
+
+# Install shared library and public headers so libsddc can be packaged
+install(TARGETS sddc
+  LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+  ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+  COMPONENT libsddc
+)
+
+# Install public headers from this directory (headers only)
+install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/
+  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/sddc
+  COMPONENT libsddc
+  FILES_MATCHING PATTERN "*.h"
+)
+
 # applications
 add_executable(sddc_test sddc_test.c)
 target_link_libraries(sddc_test PRIVATE sddc ${ASANLIB})

@@ -103,23 +103,37 @@ jobs:
       working-directory: ${{runner.workspace}}/build
       shell: powershell
       # Execute the build.  You can specify a specific target with "--target <NAME>"
-      run: Expand-Archive -Path .\fftw-3.3.5-dll32.zip -DestinationPath unittest
+      run: Expand-Archive -Path .\fftw-3.3.5-dll32.zip -DestinationPath 
 
-    - name: Create Package
-      shell: powershell
-      run: Compress-Archive -DestinationPath SDDC_EXTIO.ZIP -LiteralPath ${{runner.workspace}}/build/src/extio/Release/ExtIO_SDDC.dll,${{runner.workspace}}/build/src/tests/libfftw3f-3.dll,README.md
+    - name: Run CPack for ExtIO
+      shell: bash
+      working-directory: ${{runner.workspace}}/build
+      run: |
+        # Create a ZIP-only package for the extio component. Set a normalized
+        # package base name: <component>-<os>-<arch>
+        echo "Running cpack for extio"
+        COMPONENT=extio
+        OS="windows"
+        ARCH=Win32
+        export CPACK_PACKAGE_FILE_NAME="${COMPONENT}-${OS}-${ARCH}"
+        CPACK_GENERATOR="ZIP" cpack --config CPackConfig.cmake --component "${COMPONENT}"
 
-    - uses: actions/upload-artifact@v4
+    - name: Upload ExtIO package
+      uses: actions/upload-artifact@v4
       with:
-        name: extio-package
-        path: SDDC_EXTIO.ZIP
+        name: windows-packages
+        path: ${{runner.workspace}}/build/*.zip
 
   build-on-linux:
-    # The CMake configure and build commands are platform agnostic and should work equally
-    # well on Windows or Mac.  You can convert this to a matrix build if you need
-    # cross-platform coverage.
-    # See: https://docs.github.com/en/free-pro-team@latest/actions/learn-github-actions/managing-complex-workflows#using-a-build-matrix
-    runs-on: ubuntu-latest
+    runs-on: 
+        runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            arch: x86_64
+          - os: ubuntu-22.04-arm
+            arch: arm64
 
     steps:
     - uses: actions/checkout@v4
@@ -157,14 +171,21 @@ jobs:
       # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
       run: ctest -C $BUILD_TYPE
 
-    - name: Create Package
+    - name: Run CPack
       shell: bash
-      run: zip SDDC_SOAPY_Linux_x86_64.ZIP ${{runner.workspace}}/build/src/firmware/libSDDCSupport.so
+      working-directory: ${{runner.workspace}}/build
+      run: |
+        OS="linux"
+        ARCH=${{ matrix.arch }}
+        CPACK_PACKAGE_FILE_NAME="libsddc-${OS}-${ARCH}" CPACK_GENERATOR="TGZ;ZIP" cpack --config CPackConfig.cmake --component libsddc
+        CPACK_PACKAGE_FILE_NAME="soapy-${OS}-${ARCH}" CPACK_GENERATOR="TGZ;ZIP" cpack --config CPackConfig.cmake --component soapy
 
     - uses: actions/upload-artifact@v4
       with:
-        name: soapy-package
-        path: SDDC_SOAPY_Linux_x86_64.ZIP
+        name: linux-packages
+        path: |
+          ${{runner.workspace}}/build/libsddc-*
+          ${{runner.workspace}}/build/soapy-*
 
   build-on-macos:
     name: build-on-macos
@@ -191,29 +212,28 @@ jobs:
         working-directory: ${{ runner.workspace }}
         run: |
           set -euo pipefail
-          build_dir="${{ runner.workspace }}/build-${{ matrix.arch }}"
-          install_dir="${{ runner.workspace }}/install/${{ matrix.arch }}"
+          build_dir="${{ runner.workspace }}/build"
           mkdir -p "${build_dir}"
           cd "${build_dir}"
-          cmake $GITHUB_WORKSPACE -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DCMAKE_OSX_ARCHITECTURES=${{ matrix.arch }} -DCMAKE_INSTALL_PREFIX="${install_dir}"
-          cmake --build . --config $BUILD_TYPE --target install
+          cmake $GITHUB_WORKSPACE -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DCMAKE_OSX_ARCHITECTURES=${{ matrix.arch }}
+          cmake --build . --config $BUILD_TYPE
 
-      - name: Package SoapySDR Module
+      - name: Run CPack
         shell: bash
+        working-directory: ${{ runner.workspace }}/build
         run: |
-          install_dir="${{ runner.workspace }}/install/${{ matrix.arch }}"
-          archive="SDDC_SOAPY_OSX_${{ matrix.arch }}.zip"
-          if [ -d "${install_dir}" ]; then
-            # Create the archive from inside the install dir so the archive
-            # contains the module files without the leading install/... path.
-            (cd "${install_dir}" && zip -r "${{ runner.workspace }}/${archive}" .)
-          else
-            echo "Install dir not found: ${install_dir}" >&2
-            exit 1
-          fi
+          OS="osx"
+          ARCH=${{ matrix.arch }}
+          CPACK_PACKAGE_FILE_NAME="libsddc-${OS}-${ARCH}" CPACK_GENERATOR="TGZ;ZIP" cpack --config CPackConfig.cmake --component libsddc
+          CPACK_PACKAGE_FILE_NAME="soapy-${OS}-${ARCH}" CPACK_GENERATOR="TGZ;ZIP" cpack --config CPackConfig.cmake --component soapy
 
-      - name: Upload SoapySDR Package
+      - name: Upload package (from build)
         uses: actions/upload-artifact@v4
         with:
-          name: soapy-package-${{ matrix.arch }}
-          path: ${{ runner.workspace }}/SDDC_SOAPY_OSX_${{ matrix.arch }}.zip
+          name: osx-${{ matrix.arch }}-packages
+          path: |
+            ${{runner.workspace}}/build/libsddc-*
+            ${{runner.workspace}}/build/soapy-*
+
+            ${{ runner.workspace }}/build-${{ matrix.arch }}/*.tar.gz
+            ${{ runner.workspace }}/build-${{ matrix.arch }}/*.zip
