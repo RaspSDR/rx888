@@ -23,146 +23,184 @@
 #ifndef __LIBSDDC_H
 #define __LIBSDDC_H
 
+#include <stdint.h>
+#include <stddef.h>
+
+
+#if defined __GNUC__
+#  if __GNUC__ >= 4
+#    define __SDR_EXPORT   __attribute__((visibility("default")))
+#    define __SDR_IMPORT   __attribute__((visibility("default")))
+#  else
+#    define __SDR_EXPORT
+#    define __SDR_IMPORT
+#  endif
+#elif _MSC_VER
+#  define __SDR_EXPORT     __declspec(dllexport)
+#  define __SDR_IMPORT     __declspec(dllimport)
+#else
+#  define __SDR_EXPORT
+#  define __SDR_IMPORT
+#endif
+
+#ifndef sddc_STATIC
+#	ifdef sddc_EXPORTS
+#	define SDDC_API __SDR_EXPORT
+#	else
+#	define SDDC_API __SDR_IMPORT
+#	endif
+#else
+#define SDDC_API
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-#include <stdint.h>
+typedef struct sddc_dev sddc_dev_t;
 
-typedef struct sddc sddc_t;
+SDDC_API uint32_t sddc_get_device_count(void);
 
-struct sddc_device_info {
-  const char *manufacturer;
-  const char *product;
-  const char *serial_number;
-};
+SDDC_API const char* sddc_get_device_name(uint32_t index);
 
-enum SDDCStatus {
-  SDDC_STATUS_OFF,
-  SDDC_STATUS_READY,
-  SDDC_STATUS_STREAMING,
-  SDDC_STATUS_FAILED = 0xff
-};
+/*!
+ * Get USB device strings.
+ *
+ * NOTE: The string arguments must provide space for up to 256 bytes.
+ *
+ * \param index the device index
+ * \param manufact manufacturer name, may be NULL
+ * \param product product name, may be NULL
+ * \param serial serial number, may be NULL
+ * \return 0 on success
+ */
+SDDC_API int sddc_get_device_usb_strings(uint32_t index,
+					     char *manufact,
+					     char *product,
+					     char *serial);
 
-enum SDDCHWModel {
-  HW_NORADIO,
-  HW_BBRF103,
-  HW_HF103,
-  HW_RX888,
-  HW_RX888R2,
-  HW_RX999,
-  HW_RX888R3,
-};
+/*!
+ * Get device index by USB serial string descriptor.
+ *
+ * \param serial serial string of the device
+ * \return device index of first device where the name matched
+ * \return -1 if name is NULL
+ * \return -2 if no devices were found at all
+ * \return -3 if devices were found, but none with matching name
+ */
+SDDC_API int sddc_get_index_by_serial(const char *serial);
 
-enum RFMode {
-  NO_RF_MODE,
-  HF_MODE,
-  VHF_MODE
-};
+SDDC_API int sddc_open(sddc_dev_t **dev, uint32_t index);
 
-enum LEDColors {
-  YELLOW_LED = 0x01,
-  RED_LED    = 0x02,
-  BLUE_LED   = 0x04
-};
+SDDC_API int sddc_close(sddc_dev_t *dev);	
 
-/* basic functions */
-int sddc_get_device_count();
+/*!
+ * Get USB device strings.
+ *
+ * NOTE: The string arguments must provide space for up to 256 bytes.
+ *
+ * \param dev the device handle given by sddc_open()
+ * \param manufact manufacturer name, may be NULL
+ * \param product product name, may be NULL
+ * \param serial serial number, may be NULL
+ * \return 0 on success
+ */
+SDDC_API int sddc_get_usb_strings(sddc_dev_t *dev, char *manufact,
+				      char *product, char *serial);
 
-int sddc_get_device_info(struct sddc_device_info **sddc_device_infos);
+/*!
+ * Get actual frequency the device is tuned to.
+ *
+ * \param dev the device handle given by sddc_open()
+ * \return 0 on error, frequency in Hz otherwise
+ */
+SDDC_API uint32_t sddc_get_center_freq(sddc_dev_t *dev);
 
-int sddc_free_device_info(struct sddc_device_info *sddc_device_infos);
+SDDC_API int sddc_set_center_freq(sddc_dev_t *dev, uint32_t freq);
 
-sddc_t *sddc_open(int index, const char* imagefile);
+/*!
+ * Set the sample rate for the device, also selects the baseband filters
+ * according to the requested sample rate for tuners where this is possible.
+ *
+ * \param dev the device handle given by sddc_open()
+ * \param samp_rate the sample rate to be set, possible values are:
+ * 		    225001 - 300000 Hz
+ * 		    900001 - 3200000 Hz
+ * 		    sample loss is to be expected for rates > 2400000
+ * \return 0 on success, -EINVAL on invalid rate
+ */
+SDDC_API int sddc_set_sample_rate(sddc_dev_t *dev, uint32_t rate);
 
-void sddc_close(sddc_t *t);
+/*!
+ * Get actual sample rate the device is configured to.
+ *
+ * \param dev the device handle given by sddc_open()
+ * \return 0 on error, sample rate in Hz otherwise
+ */
+SDDC_API uint32_t sddc_get_sample_rate(sddc_dev_t *dev);
 
-enum SDDCStatus sddc_get_status(sddc_t *t);
+/*!
+ * Enable or disable the direct sampling mode. When enabled, the input
+ * from ADC will be directly send to the application without any mixing or
+ * filtering. This mode is useful for using the device as a wideband receiver.
+ *
+ * \param dev the device handle given by sddc_open()
+ * \param on 0 means disabled, 1 enabled
+ * \return 0 on success
+ */
+SDDC_API int sddc_set_direct_sampling(sddc_dev_t *dev, int on);
 
-enum SDDCHWModel sddc_get_hw_model(sddc_t *t);
-
-const char *sddc_get_hw_model_name(sddc_t *t);
-
-uint16_t sddc_get_firmware(sddc_t *t);
-
-const double *sddc_get_frequency_range(sddc_t *t);
-
-enum RFMode sddc_get_rf_mode(sddc_t *t);
-
-int sddc_set_rf_mode(sddc_t *t, enum RFMode rf_mode);
-
-
-/* LED functions */
-int sddc_led_on(sddc_t *t, uint8_t led_pattern);
-
-int sddc_led_off(sddc_t *t, uint8_t led_pattern);
-
-int sddc_led_toggle(sddc_t *t, uint8_t led_pattern);
-
-
-/* ADC functions */
-int sddc_get_adc_dither(sddc_t *t);
-
-int sddc_set_adc_dither(sddc_t *t, int dither);
-
-int sddc_get_adc_random(sddc_t *t);
-
-int sddc_set_adc_random(sddc_t *t, int random);
-
-
-/* HF block functions */
-double sddc_get_hf_attenuation(sddc_t *t);
-
-int sddc_set_hf_attenuation(sddc_t *t, double attenuation);
-
-int sddc_get_hf_bias(sddc_t *t);
-
-int sddc_set_hf_bias(sddc_t *t, int bias);
-
-
-/* VHF block and VHF/UHF tuner functions */
-double sddc_get_tuner_frequency(sddc_t *t);
-
-int sddc_set_tuner_frequency(sddc_t *t, double frequency);
-
-int sddc_get_tuner_rf_attenuations(sddc_t *t, const double *attenuations[]);
-
-double sddc_get_tuner_rf_attenuation(sddc_t *t);
-
-int sddc_set_tuner_rf_attenuation(sddc_t *t, double attenuation);
-
-int sddc_get_tuner_if_attenuations(sddc_t *t, const double *attenuations[]);
-
-double sddc_get_tuner_if_attenuation(sddc_t *t);
-
-int sddc_set_tuner_if_attenuation(sddc_t *t, double attenuation);
-
-int sddc_get_vhf_bias(sddc_t *t);
-
-int sddc_set_vhf_bias(sddc_t *t, int bias);
-
+/*!
+ * Get state of the direct sampling mode
+ *
+ * \param dev the device handle given by sddc_open()
+ * \return -1 on error, 0 means disabled, 1 enabled
+ */
+SDDC_API int sddc_get_direct_sampling(sddc_dev_t *dev);
 
 /* streaming functions */
-typedef void (*sddc_read_async_cb_t)(uint32_t data_size, uint8_t *data,
-                                      void *context);
 
-double sddc_get_sample_rate(sddc_t *t);
+SDDC_API int sddc_reset_buffer(sddc_dev_t *dev);
+SDDC_API int sddc_read_sync(sddc_dev_t *dev, void *buf, int len, int *n_read);
 
-int sddc_set_sample_rate(sddc_t *t, double sample_rate);
+typedef void(*sddc_read_async_cb_t)(unsigned char *buf, uint32_t len, void *ctx);
 
-int sddc_set_async_params(sddc_t *t, uint32_t frame_size, 
-                          uint32_t num_frames, sddc_read_async_cb_t callback,
-                          void *callback_context);
+/*!
+ * Read samples from the device asynchronously. This function will block until
+ * it is being canceled using rtlsdr_cancel_async()
+ *
+ * \param dev the device handle given by rtlsdr_open()
+ * \param cb callback function to return received samples
+ * \param ctx user specific context to pass via the callback function
+ * \param buf_num optional buffer count, buf_num * buf_len = overall buffer size
+ *		  set to 0 for default buffer count (15)
+ * \param buf_len optional buffer length, must be multiple of 512,
+ *		  should be a multiple of 16384 (URB size), set to 0
+ *		  for default buffer length (16 * 32 * 512)
+ * \return 0 on success
+ */
+SDDC_API int sddc_read_async(sddc_dev_t *dev,
+				 sddc_read_async_cb_t cb,
+				 void *ctx,
+				 uint32_t buf_num,
+				 uint32_t buf_len);
 
-int sddc_start_streaming(sddc_t *t);
+/*!
+ * Cancel all pending asynchronous operations on the device.
+ *
+ * \param dev the device handle given by rtlsdr_open()
+ * \return 0 on success
+ */
+SDDC_API int sddc_cancel_async(sddc_dev_t *dev);
 
-int sddc_handle_events(sddc_t *t);
-
-int sddc_stop_streaming(sddc_t *t);
-
-int sddc_reset_status(sddc_t *t);
-
-int sddc_read_sync(sddc_t *t, uint8_t *data, int length, int *transferred);
+/*!
+ * Enable or disable the bias tee on GPIO PIN 0.
+ *
+ * \param dev the device handle given by sddc_open()
+ * \param on  0 for Bias T off. 1 for HF Bias T on. 2 for VHF Bias T on. 3 for both on.
+ * \return -1 if device is not initialized. 0 otherwise.
+ */
+SDDC_API int sddc_set_bias_tee(sddc_dev_t *dev, int on);
 
 #ifdef __cplusplus
 }

@@ -17,28 +17,7 @@
 #define firmware_data ((const UCHAR *)FIRMWARE)
 #define firmware_size sizeof(FIRMWARE)
 
-
-fx3class* CreateUsbHandler()
-{
-	return new fx3handler();
-}
-
-fx3handler::fx3handler():
-	fx3dev (nullptr),
-	Fx3IsOn (false),
-	devidx (0)
-{
-
-}
-
-
-fx3handler::~fx3handler() // reset USB device and exit
-{
-	DbgPrintf("\r\n~fx3handler\r\n");
-	Close();
-}
-
-char* wchar2char(const wchar_t* wchar)
+static char* wchar2char(const wchar_t* wchar)
 {
 	char* m_char;
 	int len = WideCharToMultiByte(CP_ACP, 0, wchar, wcslen(wchar), NULL, 0, NULL, NULL);
@@ -46,6 +25,50 @@ char* wchar2char(const wchar_t* wchar)
 	WideCharToMultiByte(CP_ACP, 0, wchar, wcslen(wchar), m_char, len, NULL, NULL);
 	m_char[len] = '\0';
 	return m_char;
+}
+
+fx3class* CreateUsbHandler(uint8_t devidx)
+{
+	return new fx3handler(devidx);
+}
+
+bool EnumerateFx3Devices(uint8_t idx, char* lbuf, char* sn)
+{
+	CCyFX3Device fx3dev;
+	bool r = false;
+
+	if (!fx3dev.Open(idx)) return r;
+	if (fx3dev.IsBootLoaderRunning()) {
+		if (fx3dev.DownloadFwToRam(firmware_data, firmware_size) != SUCCESS) {
+			DbgPrintf("Failed to DownloadFwToRam device(%x)\n", idx);
+		}
+		else {
+			fx3dev.Close();
+			Sleep(800);					    // wait after firmware change ?
+			fx3dev.Open(idx);
+		}
+	}
+
+	if (lbuf)
+		strcpy (lbuf, fx3dev.DeviceName);
+	if (sn)
+		strcpy (sn, wchar2char((wchar_t*)fx3dev.SerialNumber));
+	fx3dev.Close();
+	return true;
+}
+
+fx3handler::fx3handler(int devidx) :
+	Fx3IsOn (false),
+	devidx (devidx)
+{
+	fx3dev = new CCyFX3Device;              // instantiate the device
+}
+
+
+fx3handler::~fx3handler() // reset USB device and exit
+{
+	DbgPrintf("\r\n~fx3handler\r\n");
+	Close();
 }
 
 bool fx3handler::GetFx3DeviceStreamer() {   // open class 
@@ -58,35 +81,11 @@ bool fx3handler::GetFx3DeviceStreamer() {   // open class
 	return r;
 }
 
-bool fx3handler::Enumerate(unsigned char& idx, char* lbuf)
-{
-	bool r = false;
-	strcpy(lbuf, "");
-	if (fx3dev == nullptr)
-		fx3dev = new CCyFX3Device;              // instantiate the device
-	if (fx3dev == nullptr) return r;		// return if failed
-	if (!fx3dev->Open(idx)) return r;
-	if (fx3dev->IsBootLoaderRunning()) {
-		if (fx3dev->DownloadFwToRam(firmware_data, firmware_size) != SUCCESS) {
-			DbgPrintf("Failed to DownloadFwToRam device(%x)\n", idx);
-		}
-		else {
-			fx3dev->Close();
-			Sleep(800);					    // wait after firmware change ?
-			fx3dev->Open(idx);
-		}
-	}
-	strcpy (lbuf, fx3dev->DeviceName);
-	while (strlen(lbuf) < 18) strcat(lbuf, " ");
-	strcat(lbuf, "sn:");
-	strcat(lbuf, wchar2char((wchar_t*)fx3dev->SerialNumber));
-	fx3dev->Close();
-	devidx = idx;  // -> devidx
-	return true;
-}
 
 bool  fx3handler::Open() {
 	bool r = false;
+
+	if (!fx3dev->Open(devidx)) return r;
 
 	if (!GetFx3DeviceStreamer()) {
 		DbgPrintf("Failed to open device\n");

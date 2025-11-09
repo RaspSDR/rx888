@@ -1,9 +1,5 @@
 cmake_minimum_required(VERSION 3.13)
 
-if (MSVC)
-  set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS TRUE)
-endif (MSVC)
-
 include_directories("." "../core")
 
 add_library(sddc SHARED

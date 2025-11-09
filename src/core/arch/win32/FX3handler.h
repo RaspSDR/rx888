@@ -31,7 +31,7 @@ class CCyUSBEndPoint;
 class fx3handler : public fx3class
 {
 public:
-	fx3handler();
+	fx3handler(int devidx);
 	virtual ~fx3handler(void);
 
 	bool Open();

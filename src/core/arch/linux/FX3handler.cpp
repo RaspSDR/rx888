@@ -10,15 +10,15 @@
 #define firmware_data ((const char *)FIRMWARE)
 #define firmware_size sizeof(FIRMWARE)
 
-fx3class *CreateUsbHandler()
+fx3class *CreateUsbHandler(uint8_t devidx)
 {
-    return new fx3handler();
+    return new fx3handler(devidx);
 }
 
-fx3handler::fx3handler()
+fx3handler::fx3handler(uint8_t devidx)
 {
-    usb_device_infos = nullptr;
     dev = nullptr;
+    this->devidx = devidx;
 }
 
 fx3handler::~fx3handler()
@@ -124,7 +124,8 @@ bool fx3handler::ReadDebugTrace(uint8_t *pdata, uint8_t len)
     return true;
 }
 
-bool fx3handler::Enumerate(unsigned char &idx, char *lbuf)
+static struct usb_device_info *usb_device_infos;
+bool EnumerateFx3Devices(uint8_t idx, char* lbuf, char* sn)
 {
     if (idx >= usb_device_count_devices()) return false;
 
@@ -134,11 +135,11 @@ bool fx3handler::Enumerate(unsigned char &idx, char *lbuf)
 
     auto dev = &usb_device_infos[idx];
 
-    strcpy (lbuf, (const char*)dev->product);
-    while (strlen(lbuf) < 18) strcat(lbuf, " ");
-    strcat(lbuf, "sn:");
-    strcat(lbuf, (const char*)dev->serial_number);
-    devidx = idx;
+    if (lbuf)
+        strcpy (lbuf, (const char*)dev->product);
+
+    if (sn)
+        strcpy (sn, (const char*)dev->serial_number);
 
     return true;
 }
