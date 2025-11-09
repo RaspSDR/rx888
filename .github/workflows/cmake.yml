@@ -108,10 +108,14 @@ jobs:
       shell: bash
       working-directory: ${{runner.workspace}}/build
       run: |
-        # Create a ZIP-only package for the extio component. This avoids generators
-        # that may require extra tooling (RPM) on Windows CI machines.
+        # Create a ZIP-only package for the extio component. Set a normalized
+        # package base name: <component>-<os>-<arch>
         echo "Running cpack for extio"
-        CPACK_GENERATOR="ZIP" cpack --config CPackConfig.cmake --component extio || true
+        COMPONENT=extio
+        OS=${RUNNER_OS,,}
+        ARCH=Win32
+        export CPACK_PACKAGE_FILE_NAME="${COMPONENT}-${OS}-${ARCH}"
+        CPACK_GENERATOR="ZIP" cpack --config CPackConfig.cmake --component "${COMPONENT}" || true
 
     - name: Upload ExtIO package
       uses: actions/upload-artifact@v4
@@ -167,7 +171,11 @@ jobs:
       working-directory: ${{runner.workspace}}/build
       run: |
         echo "Running cpack for libsddc"
-        CPACK_GENERATOR="TGZ;ZIP" cpack --config CPackConfig.cmake --component libsddc || true
+        COMPONENT=libsddc
+        OS=${RUNNER_OS,,}
+        ARCH=x86_64
+        export CPACK_PACKAGE_FILE_NAME="${COMPONENT}-${OS}-${ARCH}"
+        CPACK_GENERATOR="TGZ;ZIP" cpack --config CPackConfig.cmake --component "${COMPONENT}" || true
 
     - uses: actions/upload-artifact@v4
       with:
@@ -182,7 +190,11 @@ jobs:
       run: |
         # Limit generators to TGZ and ZIP to avoid RPM requirements on runners
         echo "Running cpack for soapy"
-        CPACK_GENERATOR="TGZ;ZIP" cpack --config CPackConfig.cmake --component soapy || true
+        COMPONENT=soapy
+        OS=${RUNNER_OS,,}
+        ARCH=x86_64
+        export CPACK_PACKAGE_FILE_NAME="${COMPONENT}-${OS}-${ARCH}"
+        CPACK_GENERATOR="TGZ;ZIP" cpack --config CPackConfig.cmake --component "${COMPONENT}" || true
 
     - uses: actions/upload-artifact@v4
       with:
@@ -248,6 +260,10 @@ jobs:
         working-directory: ${{ runner.workspace }}/build-${{ matrix.arch }}
         run: |
           echo "Running cpack for libsddc (arch=${{ matrix.arch }})"
+          COMPONENT=libsddc
+          OS=${RUNNER_OS,,}
+          ARCH=${{ matrix.arch }}
+          export CPACK_PACKAGE_FILE_NAME="${COMPONENT}-${OS}-${ARCH}"
           CPACK_GENERATOR="TGZ;ZIP" cpack --config CPackConfig.cmake --component libsddc || true
 
       - name: Upload libsddc package
@@ -263,6 +279,10 @@ jobs:
         working-directory: ${{ runner.workspace }}/build-${{ matrix.arch }}
         run: |
           echo "Running cpack for soapy (arch=${{ matrix.arch }})"
+          COMPONENT=soapy
+          OS=${RUNNER_OS,,}
+          ARCH=${{ matrix.arch }}
+          export CPACK_PACKAGE_FILE_NAME="${COMPONENT}-${OS}-${ARCH}"
           CPACK_GENERATOR="TGZ;ZIP" cpack --config CPackConfig.cmake --component soapy || true
 
       - name: Upload soapy package (from build)

@@ -45,3 +45,26 @@ The GitHub Actions workflow `/.github/workflows/cmake.yml` has been updated to r
 If you want exact, stable artifact filenames adjust either:
 - the `CPACK_PACKAGE_FILE_NAME` / generator-specific package file name variables in `CMakeLists.txt`, or
 - the CI step that renames generated files (the latter is simpler and has been used in CI already).
+
+Component availability and artifact naming
+-----------------------------------------
+
+This project produces component-based packages. Note these platform-specific rules and the CI artifact naming convention:
+
+- Components:
+	- `libsddc` — runtime library and headers. Built and packaged on all platforms.
+	- `soapy` — SoapySDR module. Built/packaged when SoapySDR is available on the host (Linux/macOS CI installs SoapySDR). Use `cpack --component soapy` from the build directory.
+	- `extio` — Windows ExtIO GUI plugin. This is Windows-only and targets x86 (Win32). The ExtIO spec is x86; we do not produce x64 ExtIO packages. Use `cpack --component extio` from the Windows build directory (Win32).
+
+- Artifact naming (CI): all generated package base names use the pattern:
+
+	<component>-<os>-<arch>
+
+	Examples produced by CI:
+	- `libsddc-linux-x86_64.tar.gz`
+	- `soapy-macos-arm64.zip`
+	- `extio-windows-win32.zip`
+
+	The extension (.tar.gz, .zip, etc.) depends on the CPack generator used for that job.
+
+If you want version information in filenames, modify the CI step to set `CPACK_PACKAGE_FILE_NAME` to include `${PROJECT_VERSION}` or set generator-specific naming variables in `CMakeLists.txt`.
