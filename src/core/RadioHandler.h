@@ -30,8 +30,8 @@ class RadioHandlerClass {
 public:
     RadioHandlerClass();
     virtual ~RadioHandlerClass();
-    bool Init(fx3class* Fx3);
-    bool Start(int srate_idx,  void (*callback)(void* context, const float*, uint32_t), r2iqControlClass *r2iqCntrl = nullptr, void* context = nullptr);
+    bool Init(fx3class* Fx3, r2iqControlClass *r2iqCntrl = nullptr);
+    bool Start(int srate_idx,  void (*callback)(void* context, const float*, uint32_t), void* context = nullptr);
     bool Stop();
     bool Close();
     bool IsReady(){return true;}

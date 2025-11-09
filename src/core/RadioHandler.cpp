@@ -69,7 +69,8 @@ RadioHandlerClass::RadioHandlerClass() :
 	modeRF(NOMODE),
 	adcrate(DEFAULT_ADC_FREQ),
 	fc(0.0f),
-	hardware(new DummyRadio(nullptr))
+	hardware(new DummyRadio(nullptr)),
+	r2iqCntrl(nullptr)
 {
 	stateFineTune = new shift_limited_unroll_C_sse_data_t();
 }
@@ -84,12 +85,17 @@ const char *RadioHandlerClass::getName() const
 	return hardware->getName();
 }
 
-bool RadioHandlerClass::Init(fx3class* Fx3)
+bool RadioHandlerClass::Init(fx3class* Fx3, r2iqControlClass* r2iqCntrl)
 {
 	uint8_t rdata[4];
 	this->fx3 = Fx3;
 
 	Fx3->GetHardwareInfo((uint32_t*)rdata);
+
+	if (r2iqCntrl == nullptr)
+		r2iqCntrl = new fft_mt_r2iq();
+	this->r2iqCntrl = r2iqCntrl;
+	r2iqCntrl->Init(hardware->getGain(), &inputbuffer, &outputbuffer);
 
 	radio = (RadioModel)rdata[0];
 	firmware = (rdata[1] << 8) + rdata[2];
@@ -137,19 +143,13 @@ bool RadioHandlerClass::Init(fx3class* Fx3)
 	return true;
 }
 
-bool RadioHandlerClass::Start(int srate_idx, void (*callback)(void*context, const float*, uint32_t), r2iqControlClass *r2iqCntrl, void *context)
+bool RadioHandlerClass::Start(int srate_idx, void (*callback)(void*context, const float*, uint32_t),  void *context)
 {
 	Stop();
 	DbgPrintf("RadioHandlerClass::Start\n");
-	if (r2iqCntrl == nullptr)
-		r2iqCntrl = new fft_mt_r2iq();
 
 	this->Callback = callback;
 	this->callbackContext = context;
-
-	this->r2iqCntrl = r2iqCntrl;
-	r2iqCntrl->Init(hardware->getGain(), &inputbuffer, &outputbuffer);
-
 
 	int	decimate = 4 - srate_idx;   // 5 IF bands
 	if (adcnominalfreq > N2_BANDSWITCH) 

@@ -12,6 +12,12 @@ using namespace std::chrono;
 
 class fx3handler : public fx3class
 {
+public:
+    fx3handler(uint8_t idx)
+    {
+
+    }
+
     bool Open()
     {
         return true;
@@ -43,11 +49,6 @@ class fx3handler : public fx3class
         };
 
         *data = *(uint32_t*)d;
-        return true;
-    }
-
-    bool Enumerate(unsigned char& idx, char* lbuf)
-    {
         return true;
     }
 
@@ -97,11 +98,11 @@ namespace {
 
 TEST_CASE(CoreFixture, BasicTest)
 {
-    auto usb = new fx3handler();
+    auto usb = new fx3handler(0);
 
     auto radio = new RadioHandlerClass();
 
-    radio->Init(usb, Callback);
+    radio->Init(usb);
 
     REQUIRE_EQUAL(radio->getModel(), NORADIO);
     REQUIRE_EQUAL(radio->getName(), "Dummy");
@@ -136,17 +137,17 @@ TEST_CASE(CoreFixture, BasicTest)
 
 TEST_CASE(CoreFixture, R2IQTest)
 {
-    auto usb = new fx3handler();
+    auto usb = new fx3handler(0);
 
     auto radio = new RadioHandlerClass();
 
-    radio->Init(usb, Callback);
+    radio->Init(usb);
 
     for (int decimate = 0; decimate < 5; decimate++)
     {
         count = 0;
         totalsize = 0;
-        radio->Start(decimate); // full bandwidth
+        radio->Start(decimate, Callback); // full bandwidth
         std::this_thread::sleep_for(1s);
         radio->Stop();
 
@@ -163,13 +164,13 @@ TEST_CASE(CoreFixture, R2IQTest)
 
 TEST_CASE(CoreFixture, TuneTest)
 {
-    auto usb = new fx3handler();
+    auto usb = new fx3handler(0);
 
     auto radio = new RadioHandlerClass();
 
-    radio->Init(usb, Callback);
+    radio->Init(usb);
 
-    radio->Start(1); // full bandwidth
+    radio->Start(1, Callback); // full bandwidth
 
     for (uint64_t i = 1000; i < 15000000;  i+=377000)
     {

@@ -103,8 +103,6 @@ static bool GetConsoleInput(char* buf, int maxlen)
 {
 	DWORD nevents = 0;
 	INPUT_RECORD irInBuf[128];
-	KEY_EVENT_RECORD key;
-	int i;
 	bool rc = false;
 	int counter = 0;
 	if (Hconsole == nullptr) return rc;
@@ -118,7 +116,7 @@ static bool GetConsoleInput(char* buf, int maxlen)
 				dbgprintf("ReadConsoleInput error\n");
 				return rc;
 			}
-			for (i = 0; i < nevents; i++)
+			for (DWORD i = 0; i < nevents; i++)
 			{
 				if (irInBuf[i].EventType == KEY_EVENT)
 				{
@@ -198,27 +196,25 @@ bool __declspec(dllexport) __stdcall InitHW(char *name, char *model, int& type)
 #endif
 		EnterFunction();  // now works
 
-		auto Fx3 = CreateUsbHandler();
 		unsigned char idx = 0;
 		int selected = 0;
-		while (Fx3->Enumerate(idx, devicelist.dev[idx]) && (idx < MAXNDEV))
+		int count = 0;
+		while (true)
 		{
-			// https://en.wikipedia.org/wiki/West_Bridge
-			int retry = 2;
-			while ((strncmp("WestBridge", devicelist.dev[idx],sizeof("WestBridge")) != NULL) && retry-- > 0)
-				Fx3->Enumerate(idx, devicelist.dev[idx]); // if it enumerates as BootLoader retry
-			idx++;
+			if (!EnumerateFx3Devices(count, nullptr, nullptr))
+				break;
+			count++;
 		}
-		devicelist.numdev = idx;
-		if (idx > 1){	
-			selected =  DialogBoxParam(hInst, MAKEINTRESOURCE(IDD_SELECTDEVICE), NULL, DlgSelectDevice, (LPARAM) &devicelist);
+		devicelist.numdev = count;
+		if (count > 1) {
+			selected =  (int)DialogBoxParam(hInst, MAKEINTRESOURCE(IDD_SELECTDEVICE), NULL, DlgSelectDevice, (LPARAM) &devicelist);
 		}
 		DbgPrintf("selected %d \n",selected);
 		idx = selected;
-		Fx3->Enumerate(idx, devicelist.dev[idx]);
 
+		auto Fx3 = CreateUsbHandler(idx);
 		gbInitHW = Fx3->Open() &&
-				RadioHandler.Init(Fx3, Callback); // Check if it there hardware
+				RadioHandler.Init(Fx3); // Check if it there hardware
 	
 #ifdef _DEBUG
 			RadioHandler.EnableDebug( printf_USB_cb , GetConsoleInput);
@@ -327,7 +323,7 @@ int EXTIO_API StartHWdbl(double LOfreq)
 	if (!gbInitHW)
 		return 0;
 
-	RadioHandler.Start(ExtIoGetActualSrateIdx());
+	RadioHandler.Start(ExtIoGetActualSrateIdx(), Callback);
 	SetHWLOdbl(LOfreq);
 
 	if (RadioHandler.IsReady()) //  HF103 connected
@@ -867,7 +863,7 @@ int SetOverclock(uint32_t adcfreq)
 	EXTIO_STATUS_CHANGE(pfnCallback, extHw_Changed_SampleRate);
 	EXTIO_STATUS_CHANGE(pfnCallback, extHw_Changed_SRATES);
 
-	RadioHandler.Start(ExtIoGetActualSrateIdx());
+	RadioHandler.Start(ExtIoGetActualSrateIdx(), Callback);
 	double internal_LOfreq = gfLOfreq / FreqCorrectionFactor();
 	RadioHandler.TuneLO(internal_LOfreq);
 	return 0;
