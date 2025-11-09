@@ -112,7 +112,7 @@ jobs:
         # package base name: <component>-<os>-<arch>
         echo "Running cpack for extio"
         COMPONENT=extio
-        OS=${RUNNER_OS,,}
+        OS=$(printf '%s' "$RUNNER_OS" | tr '[:upper:]' '[:lower:]')
         ARCH=Win32
         export CPACK_PACKAGE_FILE_NAME="${COMPONENT}-${OS}-${ARCH}"
         CPACK_GENERATOR="ZIP" cpack --config CPackConfig.cmake --component "${COMPONENT}" || true
@@ -172,7 +172,7 @@ jobs:
       run: |
         echo "Running cpack for libsddc"
         COMPONENT=libsddc
-        OS=${RUNNER_OS,,}
+        OS=$(printf '%s' "$RUNNER_OS" | tr '[:upper:]' '[:lower:]')
         ARCH=x86_64
         export CPACK_PACKAGE_FILE_NAME="${COMPONENT}-${OS}-${ARCH}"
         CPACK_GENERATOR="TGZ;ZIP" cpack --config CPackConfig.cmake --component "${COMPONENT}" || true
@@ -191,7 +191,7 @@ jobs:
         # Limit generators to TGZ and ZIP to avoid RPM requirements on runners
         echo "Running cpack for soapy"
         COMPONENT=soapy
-        OS=${RUNNER_OS,,}
+        OS=$(printf '%s' "$RUNNER_OS" | tr '[:upper:]' '[:lower:]')
         ARCH=x86_64
         export CPACK_PACKAGE_FILE_NAME="${COMPONENT}-${OS}-${ARCH}"
         CPACK_GENERATOR="TGZ;ZIP" cpack --config CPackConfig.cmake --component "${COMPONENT}" || true
@@ -261,7 +261,7 @@ jobs:
         run: |
           echo "Running cpack for libsddc (arch=${{ matrix.arch }})"
           COMPONENT=libsddc
-          OS=${RUNNER_OS,,}
+          OS=$(printf '%s' "$RUNNER_OS" | tr '[:upper:]' '[:lower:]')
           ARCH=${{ matrix.arch }}
           export CPACK_PACKAGE_FILE_NAME="${COMPONENT}-${OS}-${ARCH}"
           CPACK_GENERATOR="TGZ;ZIP" cpack --config CPackConfig.cmake --component libsddc || true
@@ -280,7 +280,7 @@ jobs:
         run: |
           echo "Running cpack for soapy (arch=${{ matrix.arch }})"
           COMPONENT=soapy
-          OS=${RUNNER_OS,,}
+          OS=$(printf '%s' "$RUNNER_OS" | tr '[:upper:]' '[:lower:]')
           ARCH=${{ matrix.arch }}
           export CPACK_PACKAGE_FILE_NAME="${COMPONENT}-${OS}-${ARCH}"
           CPACK_GENERATOR="TGZ;ZIP" cpack --config CPackConfig.cmake --component soapy || true
