@@ -12,3 +12,18 @@ target_link_libraries(ExtIO_SDDC PRIVATE git_version)
 target_link_libraries(ExtIO_SDDC PRIVATE SDDC_CORE)
 set_target_properties(ExtIO_SDDC PROPERTIES PREFIX "")
 target_compile_definitions(ExtIO_SDDC PUBLIC _CRT_SECURE_NO_WARNINGS)
+
+include(GNUInstallDirs)
+
+# Install the ExtIO binary and auxiliary files into the package for Windows.
+# This component is intended to be packaged separately as a ZIP for Windows.
+install(TARGETS ExtIO_SDDC
+	RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+	COMPONENT extio
+)
+
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/manifest.xml")
+	install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/manifest.xml"
+		DESTINATION ${CMAKE_INSTALL_BINDIR}
+		COMPONENT extio)
+endif()

@@ -104,15 +104,20 @@ jobs:
       shell: powershell
       # Execute the build.  You can specify a specific target with "--target <NAME>"
       run: Expand-Archive -Path .\fftw-3.3.5-dll32.zip -DestinationPath unittest
+    - name: Run CPack for ExtIO
+      shell: bash
+      working-directory: ${{runner.workspace}}/build
+      run: |
+        # Create a ZIP-only package for the extio component. This avoids generators
+        # that may require extra tooling (RPM) on Windows CI machines.
+        echo "Running cpack for extio"
+        CPACK_GENERATOR="ZIP" cpack --config CPackConfig.cmake --component extio || true
 
-    - name: Create Package
-      shell: powershell
-      run: Compress-Archive -DestinationPath SDDC_EXTIO.ZIP -LiteralPath ${{runner.workspace}}/build/src/extio/Release/ExtIO_SDDC.dll,${{runner.workspace}}/build/src/tests/libfftw3f-3.dll,README.md
-
-    - uses: actions/upload-artifact@v4
+    - name: Upload ExtIO package
+      uses: actions/upload-artifact@v4
       with:
         name: extio-package
-        path: SDDC_EXTIO.ZIP
+        path: ${{runner.workspace}}/build/*.zip
 
   build-on-linux:
     # The CMake configure and build commands are platform agnostic and should work equally
@@ -157,14 +162,34 @@ jobs:
       # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
       run: ctest -C $BUILD_TYPE
 
-    - name: Create Package
+    - name: Run CPack for libsddc
       shell: bash
-      run: zip SDDC_SOAPY_Linux_x86_64.ZIP ${{runner.workspace}}/build/src/firmware/libSDDCSupport.so
+      working-directory: ${{runner.workspace}}/build
+      run: |
+        echo "Running cpack for libsddc"
+        CPACK_GENERATOR="TGZ;ZIP" cpack --config CPackConfig.cmake --component libsddc || true
+
+    - uses: actions/upload-artifact@v4
+      with:
+        name: libsddc-package
+        path: |
+          ${{runner.workspace}}/build/*.tar.gz
+          ${{runner.workspace}}/build/*.zip
+
+    - name: Run CPack for soapy
+      shell: bash
+      working-directory: ${{runner.workspace}}/build
+      run: |
+        # Limit generators to TGZ and ZIP to avoid RPM requirements on runners
+        echo "Running cpack for soapy"
+        CPACK_GENERATOR="TGZ;ZIP" cpack --config CPackConfig.cmake --component soapy || true
 
     - uses: actions/upload-artifact@v4
       with:
         name: soapy-package
-        path: SDDC_SOAPY_Linux_x86_64.ZIP
+        path: |
+          ${{runner.workspace}}/build/*.tar.gz
+          ${{runner.workspace}}/build/*.zip
 
   build-on-macos:
     name: build-on-macos
@@ -217,3 +242,33 @@ jobs:
         with:
           name: soapy-package-${{ matrix.arch }}
           path: ${{ runner.workspace }}/SDDC_SOAPY_OSX_${{ matrix.arch }}.zip
+
+      - name: Run CPack for libsddc
+        shell: bash
+        working-directory: ${{ runner.workspace }}/build-${{ matrix.arch }}
+        run: |
+          echo "Running cpack for libsddc (arch=${{ matrix.arch }})"
+          CPACK_GENERATOR="TGZ;ZIP" cpack --config CPackConfig.cmake --component libsddc || true
+
+      - name: Upload libsddc package
+        uses: actions/upload-artifact@v4
+        with:
+          name: libsddc-package-${{ matrix.arch }}
+          path: |
+            ${{ runner.workspace }}/build-${{ matrix.arch }}/*.tar.gz
+            ${{ runner.workspace }}/build-${{ matrix.arch }}/*.zip
+
+      - name: Run CPack for Soapy (build dir)
+        shell: bash
+        working-directory: ${{ runner.workspace }}/build-${{ matrix.arch }}
+        run: |
+          echo "Running cpack for soapy (arch=${{ matrix.arch }})"
+          CPACK_GENERATOR="TGZ;ZIP" cpack --config CPackConfig.cmake --component soapy || true
+
+      - name: Upload soapy package (from build)
+        uses: actions/upload-artifact@v4
+        with:
+          name: soapy-package-from-build-${{ matrix.arch }}
+          path: |
+            ${{ runner.workspace }}/build-${{ matrix.arch }}/*.tar.gz
+            ${{ runner.workspace }}/build-${{ matrix.arch }}/*.zip

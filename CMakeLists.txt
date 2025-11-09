@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.13)
-project(SDDC VERSION 1.0.1)
+project(SDDC VERSION 1.0.2 LANGUAGES C CXX)
 
 include(CTest)
 
@@ -79,4 +79,49 @@ add_subdirectory(src/tests)
 if (MSVC)
     add_subdirectory(src/extio)
 endif()
-add_subdirectory(src/soapy)
+
+find_package(SoapySDR CONFIG)
+
+if (SoapySDR_FOUND)
+    add_subdirectory(src/soapy)
+endif(SoapySDR_FOUND)
+
+# --- CPack packaging configuration ---------------------------------------
+include(GNUInstallDirs)
+
+set(CPACK_PACKAGE_NAME "sddc")
+set(CPACK_PACKAGE_VENDOR "rx888")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "SDDC libraries and optional Soapy/ExtIO modules")
+set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
+set(CPACK_PACKAGE_CONTACT "support@rx-888.com")
+set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_SOURCE_DIR}/LICENSE.txt")
+
+# Component-based packaging: produce separate packages for libsddc, soapy and extio
+set(CPACK_COMPONENTS_ALL libsddc soapy extio)
+set(CPACK_COMPONENT_INSTALL ON)
+
+set(CPACK_COMPONENT_libsddc_DISPLAY_NAME "libsddc runtime")
+set(CPACK_COMPONENT_libsddc_DESCRIPTION "libsddc shared library and headers")
+
+set(CPACK_COMPONENT_soapy_DISPLAY_NAME "SoapySDR module")
+set(CPACK_COMPONENT_soapy_DESCRIPTION "SoapySDR module for RX-888 family devices")
+
+set(CPACK_COMPONENT_extio_DISPLAY_NAME "ExtIO (Windows)")
+set(CPACK_COMPONENT_extio_DESCRIPTION "SDDC ExtIO GUI plugin for Windows")
+
+# Platform-specific default generators
+if(APPLE)
+    set(CPACK_GENERATOR "TGZ;ZIP")
+elseif(UNIX)
+    # On Linux include RPM alongside tar.gz for distribution
+    set(CPACK_GENERATOR "TGZ;ZIP;RPM")
+else()
+    # Windows: produce ZIP packages per-component
+    set(CPACK_GENERATOR "ZIP")
+endif()
+
+# RPM-specific defaults that are useful on Linux
+set(CPACK_RPM_PACKAGE_LICENSE "MIT")
+set(CPACK_RPM_PACKAGE_RELEASE "1")
+
+include(CPack)
