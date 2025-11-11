@@ -50,9 +50,9 @@ bool EnumerateFx3Devices(uint8_t idx, char* lbuf, char* sn)
 	}
 
 	if (lbuf)
-		strcpy (lbuf, fx3dev.DeviceName);
+		strncpy (lbuf, fx3dev.DeviceName, 250);
 	if (sn)
-		strcpy (sn, wchar2char((wchar_t*)fx3dev.SerialNumber));
+		strncpy (sn, wchar2char((wchar_t*)fx3dev.SerialNumber), 250);
 	fx3dev.Close();
 	return true;
 }

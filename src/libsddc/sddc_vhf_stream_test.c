@@ -24,7 +24,7 @@
 #include <string.h>
 #include <time.h>
 
-#include "libsddc.h"
+#include "sddc.h"
 #include "wavewrite.h"
 
 #if _WIN32
@@ -113,17 +113,16 @@ static double clk_diff() {
 int main(int argc, char **argv)
 {
   if (argc < 3) {
-    fprintf(stderr, "usage: %s <image file> <sample rate> [<runtime_in_ms> [<output_filename>]\n", argv[0]);
+    fprintf(stderr, "usage: %s <sample rate> <vhf frequency> [<runtime_in_ms> [<output_filename>]\n", argv[0]);
     return -1;
   }
-  char *imagefile = argv[1];
   const char *outfilename = 0;
-  double sample_rate = 0.0;
-
-  double vhf_frequency = 100e6;
+  uint32_t sample_rate = 0.0;
+  uint64_t vhf_frequency = 100*1000*1000;  /* 100 MHz */
   double vhf_attenuation = 20;  /* 20dB attenuation */
 
-  sscanf(argv[2], "%lf", &sample_rate);
+  sscanf(argv[1], "%ld", &sample_rate);
+  sscanf(argv[2], "%lld", &vhf_frequency);
   if (3 < argc)
     runtime = atoi(argv[3]);
   if (4 < argc)
@@ -136,8 +135,9 @@ int main(int argc, char **argv)
 
   int ret_val = -1;
 
-  sddc_t *sddc = sddc_open(0, imagefile);
-  if (sddc == 0) {
+  sddc_dev_t *sddc ;
+  int ret = sddc_open_raw(&sddc, 0);
+  if (ret < 0) {
     fprintf(stderr, "ERROR - sddc_open() failed\n");
     return -1;
   }
@@ -147,23 +147,19 @@ int main(int argc, char **argv)
     goto DONE;
   }
 
-  if (sddc_set_async_params(sddc, 0, 0, count_bytes_callback, sddc) < 0) {
-    fprintf(stderr, "ERROR - sddc_set_async_params() failed\n");
+  // enable tuner
+  if (sddc_set_direct_sampling(sddc, 0) < 0) {
+    fprintf(stderr, "ERROR - sddc_set_direct_sampling() failed\n");
     goto DONE;
   }
 
-  if (sddc_set_rf_mode(sddc, VHF_MODE) < 0) {
-    fprintf(stderr, "ERROR - sddc_set_rf_mode() failed\n");
-    goto DONE;
-  }
-
-  if (sddc_set_tuner_frequency(sddc, vhf_frequency) < 0) {
+  if (sddc_set_center_freq64(sddc, vhf_frequency) < 0) {
     fprintf(stderr, "ERROR - sddc_set_vhf_frequency() failed\n");
     goto DONE;
   }
 
-  if (sddc_set_tuner_rf_attenuation(sddc, vhf_attenuation) < 0) {
-    fprintf(stderr, "ERROR - sddc_set_tuner_rf_attenuation() failed\n");
+  if (sddc_set_rf_gain(sddc, -vhf_attenuation) < 0) {
+    fprintf(stderr, "ERROR - sddc_set_rf_gain() failed\n");
     goto DONE;
   }
 

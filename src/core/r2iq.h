@@ -32,7 +32,6 @@ public:
     virtual void TurnOn() { this->r2iqOn = true; }
     virtual void TurnOff(void) { this->r2iqOn = false; }
     virtual bool IsOn(void) { return this->r2iqOn; }
-    virtual void DataReady(void) {}
     virtual float setFreqOffset(float offset) { return 0; };
 
 protected:

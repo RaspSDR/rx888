@@ -90,8 +90,34 @@ SDDC_API int sddc_get_device_usb_strings(uint32_t index,
  */
 SDDC_API int sddc_get_index_by_serial(const char *serial);
 
+/*!
+ * Open the device.
+ *
+ * \param dev the device handle
+ * \param index the device index
+ * \return 0 on success
+ */
 SDDC_API int sddc_open(sddc_dev_t **dev, uint32_t index);
 
+/*!
+ * Open the device at the raw mode.
+ *
+ * At raw mode, the data read from the device will be real int16_t samples
+ * at the sampling rate * 2. Also, the device will not support tuning at
+ * direct sampling mode (HF Band).
+ *
+ * \param dev the device handle
+ * \param index the device index
+ * \return 0 on success
+ */
+SDDC_API int sddc_open_raw(sddc_dev_t** dev, uint32_t index);
+
+/*!
+ * Close the device.
+ *
+ * \param dev the device handle given by sddc_open()
+ * \return 0 on success
+ */
 SDDC_API int sddc_close(sddc_dev_t *dev);	
 
 /*!
@@ -109,18 +135,92 @@ SDDC_API int sddc_get_usb_strings(sddc_dev_t *dev, char *manufact,
 				      char *product, char *serial);
 
 /*!
+ * Set crystal oscillator frequencies used for the ADC.
+ *
+ * The default frequency is 62Mhz for most of the devices. This frequency depends on
+ * the bandwith and usable frequency range when in the direct sampling mode.
+ *
+ * NOTE: Call this function only if you fully understand the implications.
+ *
+ * \param dev the device handle given by rtlsdr_open()
+ * \param rtl_freq frequency value used to clock ADC in Hz
+ * \return 0 on success
+ */
+SDDC_API int sddc_set_xtal_freq(sddc_dev_t *dev, uint32_t rtl_freq);
+
+/*!
+ * Get crystal oscillator frequencies used for the ADC.
+ *
+ * Usually both ICs use the same clock.
+ *
+ * \param dev the device handle given by rtlsdr_open()
+ * \param rtl_freq frequency value used to clock the ADC in Hz
+  * \return 0 on success
+ */
+SDDC_API int sddc_get_xtal_freq(sddc_dev_t *dev, uint32_t *rtl_freq);
+
+/*!
+ * Set the IF gain value.
+ *
+ * \param dev the device handle given by sddc_open()
+ * \param value gain value
+ * \return 0 on success
+ */
+SDDC_API int sddc_set_if_gain(sddc_dev_t *dev, int value);
+
+/*!
+ * Set the RF attenuator value.
+ *
+ * \param dev the device handle given by sddc_open()
+ * \param value attenuator value
+ * \return 0 on success
+ */
+SDDC_API int sddc_set_rf_attenuator(sddc_dev_t *dev, int value);
+
+/*!
+ * Get the IF gain value.
+ *
+ * \param dev the device handle given by sddc_open()
+ * \param value pointer to store gain value
+ * \return 0 on success
+ */
+SDDC_API int sddc_get_if_gain(sddc_dev_t *dev, int *value);
+
+/*!
+ * Get the RF attenuator value.
+ *
+ * \param dev the device handle given by sddc_open()
+ * \param value pointer to store attenuator value
+ * \return 0 on success
+ */
+SDDC_API int sddc_get_rf_attenuator(sddc_dev_t *dev, int *value);
+
+/*!
  * Get actual frequency the device is tuned to.
  *
  * \param dev the device handle given by sddc_open()
  * \return 0 on error, frequency in Hz otherwise
  */
 SDDC_API uint32_t sddc_get_center_freq(sddc_dev_t *dev);
+SDDC_API uint64_t sddc_get_center_freq64(sddc_dev_t *dev);
 
+/*!
+ * Set the center frequency for the device.
+ *
+ * \param dev the device handle given by sddc_open()
+ * \param freq frequency in Hz
+ * \return 0 on success
+ * 		   -1 when the frequency is out of range
+ * 		   -2 when the frequency setting needs stop read first
+ */
 SDDC_API int sddc_set_center_freq(sddc_dev_t *dev, uint32_t freq);
+SDDC_API int sddc_set_center_freq64(sddc_dev_t *dev, uint64_t freq);
 
 /*!
  * Set the sample rate for the device, also selects the baseband filters
  * according to the requested sample rate for tuners where this is possible.
+ * 
+ * note: raw mode doesn't support set sample rate.
  *
  * \param dev the device handle given by sddc_open()
  * \param samp_rate the sample rate to be set, possible values are:
@@ -134,6 +234,8 @@ SDDC_API int sddc_set_sample_rate(sddc_dev_t *dev, uint32_t rate);
 /*!
  * Get actual sample rate the device is configured to.
  *
+ * note: sample rate is always equal to ADC XTAL frequency divided by 2 in raw mode.
+ * 
  * \param dev the device handle given by sddc_open()
  * \return 0 on error, sample rate in Hz otherwise
  */
@@ -160,14 +262,31 @@ SDDC_API int sddc_get_direct_sampling(sddc_dev_t *dev);
 
 /* streaming functions */
 
+/*!
+ * Reset the internal sample buffer.
+ *
+ * \param dev the device handle given by sddc_open()
+ * \return 0 on success
+ */
 SDDC_API int sddc_reset_buffer(sddc_dev_t *dev);
+
+/*!
+ * Read samples from the device synchronously.
+ *
+ * \param dev the device handle given by sddc_open()
+ * \param buf buffer to store received samples
+ * \param len length of buffer in bytes
+ * \param n_read pointer to store number of bytes actually read
+ * \return 0 on success
+ */
 SDDC_API int sddc_read_sync(sddc_dev_t *dev, void *buf, int len, int *n_read);
 
 typedef void(*sddc_read_async_cb_t)(unsigned char *buf, uint32_t len, void *ctx);
 
 /*!
- * Read samples from the device asynchronously. This function will block until
- * it is being canceled using rtlsdr_cancel_async()
+ * Read samples from the device asynchronously. This function will not block.
+ *
+ * Note: this is different from rtlsdr_read_async() which will block.
  *
  * \param dev the device handle given by rtlsdr_open()
  * \param cb callback function to return received samples

@@ -24,7 +24,7 @@
 #include <string.h>
 #include <time.h>
 
-#include "libsddc.h"
+#include "sddc.h"
 #include "wavewrite.h"
 
 #if _WIN32
@@ -112,17 +112,16 @@ static double clk_diff() {
 
 int main(int argc, char **argv)
 {
-  if (argc < 3) {
-    fprintf(stderr, "usage: %s <image file> <sample rate> [<runtime_in_ms> [<output_filename>]\n", argv[0]);
+  if (argc < 2) {
+    fprintf(stderr, "usage: %s <sample rate> [<runtime_in_ms> [<output_filename>]\n", argv[0]);
     return -1;
   }
-  char *imagefile = argv[1];
   const char *outfilename = 0;
-  double sample_rate = 0.0;
-  sscanf(argv[2], "%lf", &sample_rate);
-  if (3 < argc)
+  uint32_t sample_rate = 0;
+  sscanf(argv[1], "%ld", &sample_rate);
+  if (2 < argc)
     runtime = atoi(argv[3]);
-  if (4 < argc)
+  if (3 < argc)
     outfilename = argv[4];
 
   if (sample_rate <= 0) {
@@ -132,8 +131,9 @@ int main(int argc, char **argv)
 
   int ret_val = -1;
 
-  sddc_t *sddc = sddc_open(0, imagefile);
-  if (sddc == 0) {
+  sddc_dev_t *sddc;
+  int ret = sddc_open_raw(&sddc, 0);
+  if (ret < 0) {
     fprintf(stderr, "ERROR - sddc_open() failed\n");
     return -1;
   }
@@ -143,8 +143,8 @@ int main(int argc, char **argv)
     goto DONE;
   }
 
-  if (sddc_set_async_params(sddc, 0, 0, count_bytes_callback, sddc) < 0) {
-    fprintf(stderr, "ERROR - sddc_set_async_params() failed\n");
+  if (sddc_set_direct_sampling(sddc, 1) < 0) {
+    fprintf(stderr, "ERROR - sddc_set_direct_sampling() failed\n");
     goto DONE;
   }
 

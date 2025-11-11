@@ -21,7 +21,7 @@
 
 #include <stdio.h>
 
-#include "libsddc.h"
+#include "sddc.h"
 
 #if _WIN32
 #include <windows.h>
