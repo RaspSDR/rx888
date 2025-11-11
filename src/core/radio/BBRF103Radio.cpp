@@ -1,4 +1,4 @@
-#include "../RadioHandler.h"
+#include "RadioHardware.h"
 
 #define R820T_FREQ (32000000)	// R820T reference frequency
 #define R820T2_IF_CARRIER (4570000)
@@ -19,7 +19,13 @@ const float BBRF103Radio::hfsteps[3] = {
 };
 
 BBRF103Radio::BBRF103Radio(fx3class* fx3)
-    : RadioHardware(fx3)
+    : RadioHardware(fx3, BBRF103)
+{
+    
+}
+
+BBRF103Radio::BBRF103Radio(fx3class* fx3, RadioModel model)
+    : RadioHardware(fx3, model)
 {
     
 }

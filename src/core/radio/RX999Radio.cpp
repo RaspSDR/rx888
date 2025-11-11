@@ -1,4 +1,4 @@
-#include "../RadioHandler.h"
+#include "RadioHardware.h"
 
 #define ADC_FREQ (128u*1000*1000)
 #define IF_FREQ (ADC_FREQ / 4)
@@ -9,7 +9,7 @@
 #define MODE HIGH_MODE
 
 RX999Radio::RX999Radio(fx3class *fx3)
-    : RadioHardware(fx3)
+    : RadioHardware(fx3, RX999)
 {
     // high mode gain = 0.409, start=-30
     // low mode gain = 0.059, start = -30

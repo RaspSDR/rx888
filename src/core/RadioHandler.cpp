@@ -65,7 +65,6 @@ RadioHandlerClass::RadioHandlerClass() :
 	randout(false),
 	biasT_HF(false),
 	biasT_VHF(false),
-	firmware(0),
 	modeRF(NOMODE),
 	adcrate(DEFAULT_ADC_FREQ),
 	fc(0.0f),
@@ -87,58 +86,17 @@ const char *RadioHandlerClass::getName() const
 
 bool RadioHandlerClass::Init(fx3class* Fx3, r2iqControlClass* r2iqCntrl)
 {
-	uint8_t rdata[4];
 	this->fx3 = Fx3;
-
-	Fx3->GetHardwareInfo((uint32_t*)rdata);
 
 	if (r2iqCntrl == nullptr)
 		r2iqCntrl = new fft_mt_r2iq();
 	this->r2iqCntrl = r2iqCntrl;
 	r2iqCntrl->Init(hardware->getGain(), &inputbuffer, &outputbuffer);
 
-	radio = (RadioModel)rdata[0];
-	firmware = (rdata[1] << 8) + rdata[2];
-
-	delete hardware; // delete dummy instance
-	switch (radio)
-	{
-	case HF103:
-		hardware = new HF103Radio(Fx3);
-		break;
-
-	case BBRF103:
-		hardware = new BBRF103Radio(Fx3);
-		break;
-
-	case RX888:
-		hardware = new RX888Radio(Fx3);
-		break;
-
-	case RX888r2:
-		hardware = new RX888R2Radio(Fx3);
-		break;
-
-	case RX888r3:
-		hardware = new RX888R3Radio(Fx3);
-		break;
-
-	case RX999:
-		hardware = new RX999Radio(Fx3);
-		break;
-
-	case RXLUCY:
-		hardware = new RXLucyRadio(Fx3);
-		break;
-
-	default:
-		hardware = new DummyRadio(Fx3);
-		DbgPrintf("WARNING no SDR connected\n");
-		break;
-	}
+	this->hardware = CreateRadioHardwareInstance(Fx3);
+	
 	adcrate = adcnominalfreq;
 	hardware->Initialize(adcnominalfreq);
-	DbgPrintf("%s | firmware %x\n", hardware->getName(), firmware);
 
 	return true;
 }

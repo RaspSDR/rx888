@@ -1,4 +1,4 @@
-#include "../RadioHandler.h"
+#include "RadioHardware.h"
 
 #define ADC_FREQ (64u*1000*1000)
 #define IF_FREQ (ADC_FREQ / 4)
@@ -9,7 +9,7 @@
 #define MODE HIGH_MODE
 
 RXLucyRadio::RXLucyRadio(fx3class *fx3)
-    : RadioHardware(fx3)
+    : RadioHardware(fx3, RXLUCY)
 {
     // initialize steps
     for (uint8_t i = 0; i < if_step_size; i++) {

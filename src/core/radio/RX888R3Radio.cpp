@@ -1,4 +1,4 @@
-#include "../RadioHandler.h"
+#include "RadioHardware.h"
 
 #define REFCLK_FREQ (27000000) // R820T reference frequency
 #define IF_FREQ (20000000)
@@ -22,7 +22,7 @@ const float RX888R3Radio::vhf_if_steps[RX888R3Radio::vhf_if_step_size] = {
     -4.7f, -2.1f, 0.5f, 3.5f, 7.7f, 11.2f, 13.6f, 14.9f, 16.3f, 19.5f, 23.1f, 26.5f, 30.0f, 33.7f, 37.2f, 40.8f};
 
 RX888R3Radio::RX888R3Radio(fx3class *fx3)
-    : RadioHardware(fx3)
+    : RadioHardware(fx3, RX888r3)
 {
     for (uint8_t i = 0; i < hf_rf_step_size; i++)
     {
