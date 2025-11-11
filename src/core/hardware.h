@@ -31,6 +31,14 @@ public:
     bool FX3producerOn() { return Fx3->Control(STARTFX3); }
     bool FX3producerOff() { return Fx3->Control(STOPFX3); }
 
+    void StartStream(ringbuffer<int16_t>& input, int numofblock) {
+        Fx3->StartStream(input, numofblock);
+    }
+
+    void StopStream() {
+        Fx3->StopStream();
+    }
+
     bool ReadDebugTrace(uint8_t* pdata, uint8_t len) { return Fx3->ReadDebugTrace(pdata, len); }
 
     bool FX3SetGPIO(uint32_t mask);

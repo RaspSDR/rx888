@@ -5,7 +5,6 @@
 #include <inttypes.h>
 #include "pffft/pf_mixer.h"
 #include "RadioHandler.h"
-#include "config.h"
 #include "fft_mt_r2iq.h"
 #include "config.h"
 #include "PScope_uti.h"
@@ -86,8 +85,6 @@ const char *RadioHandlerClass::getName() const
 
 bool RadioHandlerClass::Init(fx3class* Fx3, r2iqControlClass* r2iqCntrl)
 {
-	this->fx3 = Fx3;
-
 	if (r2iqCntrl == nullptr)
 		r2iqCntrl = new fft_mt_r2iq();
 	this->r2iqCntrl = r2iqCntrl;
@@ -127,7 +124,7 @@ bool RadioHandlerClass::Start(int srate_idx, void (*callback)(void*context, cons
 	// 0,1,2,3,4 => 32,16,8,4,2 MHz
 	r2iqCntrl->setDecimate(decimate);
 	r2iqCntrl->TurnOn();
-	fx3->StartStream(inputbuffer, QUEUE_SIZE);
+	hardware->StartStream(inputbuffer, QUEUE_SIZE);
 
 	submit_thread = std::thread(
 		[this]() {
@@ -151,7 +148,7 @@ bool RadioHandlerClass::Stop()
 
 		r2iqCntrl->TurnOff();
 
-		fx3->StopStream();
+		hardware->StopStream();
 
 		run = false; // now waits for threads
 

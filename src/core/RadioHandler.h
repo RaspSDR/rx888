@@ -1,9 +1,6 @@
 #ifndef RADIOHANDLER_H
 #define RADIOHANDLER_H
 
-#include "license.txt" 
-
-#include "config.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
@@ -11,6 +8,7 @@
 #include "FX3Class.h"
 #include "radio/RadioHardware.h"
 #include "dsp/ringbuffer.h"
+#include "../Interface.h"
 
 class RadioHardware;
 class r2iqControlClass;
@@ -77,7 +75,7 @@ public:
           this->GetConsoleIn = getconsolein;
         };
 
-    bool ReadDebugTrace(uint8_t* pdata, uint8_t len) { return fx3->ReadDebugTrace(pdata, len); }
+    bool ReadDebugTrace(uint8_t* pdata, uint8_t len) { return hardware->ReadDebugTrace(pdata, len); }
 
 private:
     void AdcSamplesProcess();
@@ -115,7 +113,6 @@ private:
     float	mBps;
     float	mSpsIF;
 
-    fx3class *fx3;
     uint32_t adcrate;
 
     std::mutex fc_mutex;
