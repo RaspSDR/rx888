@@ -3,7 +3,7 @@
 #include "sddc.h"
 #include "config.h"
 #include "r2iq.h"
-#include "RadioHandler.h"
+#include "hardware.h"
 #include "FX3Class.h"
 
 enum DeviceStatus {
@@ -15,7 +15,7 @@ enum DeviceStatus {
 
 struct sddc_dev
 {
-    RadioHandlerClass* handler;
+    RadioHardware* hardware;
     uint8_t led;
     int samplerateidx;
     uint32_t target_sample_rate;
@@ -153,12 +153,7 @@ int sddc_open(sddc_dev_t **dev, uint32_t index)
         return -EBADF;
     }
 
-    ret_val->handler = new RadioHandlerClass();
-
-    if (ret_val->handler->Init(fx3))
-    {
-        ret_val->samplerateidx = 0;
-    }
+    ret_val->hardware = CreateRadioHardwareInstance(fx3);
 
     *dev = ret_val;
 
@@ -167,32 +162,12 @@ int sddc_open(sddc_dev_t **dev, uint32_t index)
 
 int sddc_open_raw(sddc_dev_t** dev, uint32_t index)
 {
-    auto ret_val = new sddc_dev();
+    int ret = sddc_open(dev, index);
+    if (ret != 0)
+        return ret;
 
-    fx3class* fx3 = CreateUsbHandler(index);
-    if (fx3 == nullptr)
-    {
-        return -EBADF;
-    }
-
-    bool openOK = fx3->Open();
-    if (!openOK) {
-        delete fx3;
-        return -EBADF;
-    }
-
-    ret_val->handler = new RadioHandlerClass();
-
-    if (ret_val->handler->Init(fx3, new rawdata()))
-    {
-        ret_val->samplerateidx = 0;
-    }
-
-    ret_val->raw_mode = true;
-
-    *dev = ret_val;
-
-    return 0;
+    (*dev)->raw_mode = true;
+    return ret;
 }
 
 int sddc_close(sddc_dev_t *dev)
@@ -200,8 +175,8 @@ int sddc_close(sddc_dev_t *dev)
     if (!dev)
         return -EINVAL;
 
-    if (dev->handler)
-        delete dev->handler;
+    if (dev->hardware)
+        delete dev->hardware;
 
     delete dev;
 
@@ -214,14 +189,14 @@ int sddc_set_bias_tee(sddc_dev_t *dev, int on)
         return -EINVAL;
 
     if (on & 0x01)
-        dev->handler->UpdBiasT_HF(true);
+        dev->hardware->FX3SetGPIO(BIAS_HF);
     else    
-        dev->handler->UpdBiasT_HF(false);
+        dev->hardware->FX3UnsetGPIO(BIAS_HF);
         
     if (on & 0x02)
-        dev->handler->UpdBiasT_VHF(true);
-    else    
-        dev->handler->UpdBiasT_VHF(false);
+        dev->hardware->FX3SetGPIO(BIAS_VHF);
+    else
+        dev->hardware->FX3UnsetGPIO(BIAS_VHF);
 
     return 0;
 }
@@ -240,7 +215,7 @@ int sddc_set_sample_rate(sddc_dev_t *dev, uint32_t rate)
         // this is not good way to use the device as the limitation of
         // LPF in front of ADC. However user may already have another LPF
         // after the attenna.
-        dev->handler->UpdateSampleRate(rate * 2);
+        dev->hardware->Initialize(rate * 2);
         dev->samplerateidx = 0; // not used
     }
     else
@@ -276,7 +251,7 @@ int sddc_set_sample_rate(sddc_dev_t *dev, uint32_t rate)
                     return -EINVAL;
                 }
             }
-    }
+        }
 
     return 0;
 }
@@ -292,7 +267,7 @@ uint64_t sddc_get_center_freq64(sddc_dev_t *dev)
         return -EINVAL;
 
     //TODO: Is this correct
-    return dev->handler->TuneLO(0);
+    return dev->hardware->TuneLo(0);
 }
 
 int sddc_set_center_freq(sddc_dev_t *dev, uint32_t freq)
@@ -311,7 +286,17 @@ int sddc_set_center_freq64(sddc_dev_t *dev, uint64_t freq)
         return -EPERM;
     }
 
-    dev->handler->TuneLO(freq);
+    if (dev->direct_sampling)
+    {
+        // set software NCO frequency
+
+    }
+    else
+    {
+        // set tuner LO frequency
+        uint64_t actLo = dev->hardware->TuneLo(freq);
+
+    }
 
     return 0;
 }
@@ -400,7 +385,36 @@ int sddc_read_async(sddc_dev_t *dev,
     dev->callback_context = ctx;
 
     dev->status = DEVICE_RUNNING;
-    dev->handler->Start(dev->samplerateidx, Callback, dev);
+
+    if (dev->raw_mode)
+    {
+        if (buf_num == 0)
+            buf_num = 16;
+        
+        if (buf_len == 0)
+            buf_len = 16384;
+
+        ringbuffer<int16_t> inputbuffer(buf_num);
+        inputbuffer.setBlockSize(buf_len);
+        dev->hardware->StartStream(inputbuffer, buf_num);
+
+        // read the data
+        while (dev->status == DEVICE_RUNNING)
+        {
+            auto ptr = inputbuffer.getReadPtr();
+            cb((unsigned char*)ptr, buf_len * sizeof(int16_t), ctx);
+            inputbuffer.ReadDone();
+        }
+
+        return 0;
+    }
+    else
+    {
+
+    }
+
+    dev->hardware->StopStream();
+    dev->status = DEVICE_IDLE;
 
     return 0;
 }
@@ -412,8 +426,6 @@ int sddc_cancel_async(sddc_dev_t *dev)
         return -EBUSY;
 
     dev->status = DEVICE_CANCELING;
-    dev->handler->Stop();
-    dev->status = DEVICE_IDLE;
 
     return 0;
 }
