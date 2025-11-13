@@ -39,18 +39,18 @@
 #endif
 		if (!this->getRand())        // plain samples no ADC rand set
 		{
-			convert_float<false>(endloop, inloop, halfFft);
+			convert_float<false, halfFft>(endloop, inloop);
 #if PRINT_INPUT_RANGE
 			auto minmax = std::minmax_element(dataADC, dataADC + transferSamples);
 			blockMinMax.first = *minmax.first;
 			blockMinMax.second = *minmax.second;
 #endif
-			convert_float<false>(dataADC, inloop + halfFft, transferSamples);
+			convert_float<false, transferSamples>(dataADC, inloop + halfFft);
 		}
 		else
 		{
-			convert_float<true>(endloop, inloop, halfFft);
-			convert_float<true>(dataADC, inloop + halfFft, transferSamples);
+			convert_float<true, halfFft>(endloop, inloop);
+			convert_float<true, transferSamples>(dataADC, inloop + halfFft);
 		}
 
 #if PRINT_INPUT_RANGE

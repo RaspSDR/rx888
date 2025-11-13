@@ -28,7 +28,7 @@ public:
 
 protected:
 
-    template<bool rand> void convert_float(const int16_t *input, float* output, int size)
+    template<bool rand, int size> void convert_float(const int16_t *input, float* output)
     {
         for(int m = 0; m < size; m++)
         {
