@@ -59,7 +59,8 @@ bool EnumerateFx3Devices(uint8_t idx, char* lbuf, char* sn)
 
 fx3handler::fx3handler(int devidx) :
 	Fx3IsOn (false),
-	devidx (devidx)
+	devidx (devidx),
+	adc_samples_thread(nullptr)
 {
 	fx3dev = new CCyFX3Device;              // instantiate the device
 }
@@ -86,6 +87,18 @@ bool  fx3handler::Open() {
 	bool r = false;
 
 	if (!fx3dev->Open(devidx)) return r;
+
+	if (fx3dev->IsBootLoaderRunning()) {
+		if (fx3dev->DownloadFwToRam(firmware_data, firmware_size) != SUCCESS) {
+			DbgPrintf("Failed to DownloadFwToRam device(%x)\n", devidx);
+			return false;
+		}
+		else {
+			fx3dev->Close();
+			Sleep(800);					    // wait after firmware change ?
+			fx3dev->Open(devidx);
+		}
+	}
 
 	if (!GetFx3DeviceStreamer()) {
 		DbgPrintf("Failed to open device\n");

@@ -6,7 +6,8 @@
 #include "hardware.h"
 #include "FX3Class.h"
 
-enum DeviceStatus {
+enum DeviceStatus
+{
     DEVICE_IDLE = 0,
     DEVICE_RUNNING,
     DEVICE_CANCELING,
@@ -15,63 +16,39 @@ enum DeviceStatus {
 
 struct sddc_dev
 {
-    RadioHardware* hardware;
+    RadioHardware *hardware;
     uint8_t led;
     int samplerateidx;
     uint32_t target_sample_rate;
 
     bool raw_mode;
 
-    // if direct sampling, we will return the data of ADC directly
-    // otherwise, we will use software to down-convert to baseband
-    int direct_sampling;
+    r2iqControlClass *r2iq;
 
     sddc_read_async_cb_t callback;
     void *callback_context;
 
     DeviceStatus status;
+
+    // stats which supports get
+    uint64_t center_frequency;
+    uint32_t sample_rate;
+    int rf_attenuator;
+    int if_gain;
+    int direct_sampling;
 };
 
-static void Callback(void* context, const float* data, uint32_t len)
+static void Callback(void *context, const float *data, uint32_t len)
 {
-    struct sddc_dev* dev = (struct sddc_dev*)context;
+    struct sddc_dev *dev = (struct sddc_dev *)context;
 
     assert(!dev->raw_mode);
 
-    if (dev->callback) {
-        dev->callback((unsigned char*)data, len * 2 * sizeof(float), dev->callback_context);
+    if (dev->callback)
+    {
+        dev->callback((unsigned char *)data, len * 2 * sizeof(float), dev->callback_context);
     }
 }
-
-class rawdata : public r2iqControlClass
-{
-public:
-    rawdata() : r2iqControlClass()
-    {
-    }
-
-    void Init(float gain, ringbuffer<int16_t> *buffers, ringbuffer<float> *obuffers) override
-    {
-    }
-
-    void TurnOn() override
-    {
-        this->r2iqOn = true;
-    }
-
-    void TurnOff(void) override
-    {
-        this->r2iqOn = false;
-    }
-
-private:
-    std::thread r2iq_thread;
-
-    void *r2iqThreadf(r2iqThreadArg *th)
-    {
-
-    }
-};
 
 uint32_t sddc_get_device_count(void)
 {
@@ -86,7 +63,7 @@ uint32_t sddc_get_device_count(void)
     return count;
 }
 
-const char* sddc_get_device_name(uint32_t index)
+const char *sddc_get_device_name(uint32_t index)
 {
     static char lbuf[256];
     uint8_t idx = (uint8_t)index;
@@ -97,9 +74,9 @@ const char* sddc_get_device_name(uint32_t index)
 }
 
 int sddc_get_device_usb_strings(uint32_t index,
-					     char *manufact,
-					     char *product,
-					     char *serial)
+                                char *manufact,
+                                char *product,
+                                char *serial)
 {
     uint8_t idx = (uint8_t)index;
     if (!EnumerateFx3Devices(idx, product, serial))
@@ -150,17 +127,32 @@ int sddc_open(sddc_dev_t **dev, uint32_t index)
     if (!openOK)
     {
         delete fx3;
+        delete ret_val;
         return -EBADF;
     }
 
     ret_val->hardware = CreateRadioHardwareInstance(fx3);
+    ret_val->hardware->FX3producerOff();
 
+    // check firmware version
+
+    if (ret_val->hardware->getFirmware() != FIRMWARE_VER_MAJOR * 256 + FIRMWARE_VER_MINOR)
+    {
+        ret_val->hardware->FX3SetGPIO(LED_RED);
+
+        delete ret_val->hardware;
+        delete ret_val;
+        return -EPERM;
+    }
+
+    ret_val->hardware->FX3SetGPIO(LED_BLUE);
+    ret_val->hardware->Initialize(DEFAULT_ADC_FREQ);
     *dev = ret_val;
 
     return 0;
 }
 
-int sddc_open_raw(sddc_dev_t** dev, uint32_t index)
+int sddc_open_raw(sddc_dev_t **dev, uint32_t index)
 {
     int ret = sddc_open(dev, index);
     if (ret != 0)
@@ -190,9 +182,9 @@ int sddc_set_bias_tee(sddc_dev_t *dev, int on)
 
     if (on & 0x01)
         dev->hardware->FX3SetGPIO(BIAS_HF);
-    else    
+    else
         dev->hardware->FX3UnsetGPIO(BIAS_HF);
-        
+
     if (on & 0x02)
         dev->hardware->FX3SetGPIO(BIAS_VHF);
     else
@@ -221,37 +213,37 @@ int sddc_set_sample_rate(sddc_dev_t *dev, uint32_t rate)
     else
     {
         dev->target_sample_rate = 0;
-        switch((int64_t)rate)
+        switch ((int64_t)rate)
         {
-            case 32000000:
-                dev->samplerateidx = 0;
-                break;
-            case 16000000:
-                dev->samplerateidx = 1;
-                break;
-            case 8000000:
-                dev->samplerateidx = 2;
-                break;
-            case 4000000:
-                dev->samplerateidx = 3;
-                break;
-            case 2000000:
+        case 32000000:
+            dev->samplerateidx = 0;
+            break;
+        case 16000000:
+            dev->samplerateidx = 1;
+            break;
+        case 8000000:
+            dev->samplerateidx = 2;
+            break;
+        case 4000000:
+            dev->samplerateidx = 3;
+            break;
+        case 2000000:
+            dev->samplerateidx = 4;
+            break;
+        default:
+            if (rate < 2000000)
+            {
                 dev->samplerateidx = 4;
+                // we need futher down-sampling
+                dev->target_sample_rate = rate;
                 break;
-            default:
-                if (rate < 2000000)
-                {
-                    dev->samplerateidx = 4;
-                    // we need futher down-sampling
-                    dev->target_sample_rate = rate;
-                    break;
-                }
-                else
-                {
-                    return -EINVAL;
-                }
+            }
+            else
+            {
+                return -EINVAL;
             }
         }
+    }
 
     return 0;
 }
@@ -266,7 +258,7 @@ uint64_t sddc_get_center_freq64(sddc_dev_t *dev)
     if (!dev)
         return -EINVAL;
 
-    //TODO: Is this correct
+    // TODO: Is this correct
     return dev->hardware->TuneLo(0);
 }
 
@@ -289,14 +281,82 @@ int sddc_set_center_freq64(sddc_dev_t *dev, uint64_t freq)
     if (dev->direct_sampling)
     {
         // set software NCO frequency
-
     }
     else
     {
         // set tuner LO frequency
         uint64_t actLo = dev->hardware->TuneLo(freq);
-
     }
+
+    return 0;
+}
+
+int sddc_set_rf_attenuator(sddc_dev_t *dev, int value)
+{
+    if (!dev)
+        return -EINVAL;
+
+    const float *steps;
+    int nstep = dev->hardware->getRFSteps(&steps);
+
+    int i = 0;
+    for (; i < nstep - 1; i++)
+    {
+        if (steps[i] >= value)
+        {
+            dev->hardware->UpdateattRF(i);
+            break;
+        }
+    }
+
+    dev->hardware->UpdateattRF(i);
+    dev->rf_attenuator = steps[i];
+
+    return 0;
+}
+
+int sddc_get_rf_attenuator(sddc_dev_t *dev, int *value)
+{
+    if (!dev || !value)
+        return -EINVAL;
+
+    if (value)
+        *value = dev->rf_attenuator;
+
+    return 0;
+}
+
+int sddc_set_if_gain(sddc_dev_t *dev, int value)
+{
+    if (!dev)
+        return -EINVAL;
+
+    const float *steps;
+    int nstep = dev->hardware->getIFSteps(&steps);
+
+    int i = 0;
+    for (; i < nstep - 1; i++)
+    {
+        if (steps[i] >= value)
+        {
+            dev->hardware->UpdateGainIF(i);
+            break;
+        }
+    }
+
+    dev->hardware->UpdateGainIF(i);
+    dev->if_gain = steps[i];
+
+    return 0;
+}
+
+int sddc_get_if_gain(sddc_dev_t *dev, int *value)
+{
+    if (!dev || !value)
+        return -EINVAL;
+
+    if (value)
+        *value = dev->if_gain;
 
     return 0;
 }
@@ -308,24 +368,23 @@ uint32_t sddc_get_sample_rate(sddc_dev_t *dev)
 
     switch (dev->samplerateidx)
     {
-        case 0:
-            return 32000000;
-        case 1:
-            return 16000000;
-        case 2:
-            return 8000000;
-        case 3:
-            return 4000000;
-        case 4:
-            if (dev->target_sample_rate != 0)
-                return dev->target_sample_rate;
-            else
-                return 2000000;
-        default:
-            return 0;
+    case 0:
+        return 32000000;
+    case 1:
+        return 16000000;
+    case 2:
+        return 8000000;
+    case 3:
+        return 4000000;
+    case 4:
+        if (dev->target_sample_rate != 0)
+            return dev->target_sample_rate;
+        else
+            return 2000000;
+    default:
+        return 0;
     }
 }
-
 
 /*!
  * Enable or disable the direct sampling mode. When enabled, the input
@@ -373,10 +432,10 @@ int sddc_read_sync(sddc_dev_t *dev, void *buf, int len, int *n_read)
 }
 
 int sddc_read_async(sddc_dev_t *dev,
-				 sddc_read_async_cb_t cb,
-				 void *ctx,
-				 uint32_t buf_num,
-				 uint32_t buf_len)
+                    sddc_read_async_cb_t cb,
+                    void *ctx,
+                    uint32_t buf_num,
+                    uint32_t buf_len)
 {
     if (dev->status != DEVICE_IDLE)
         return -EBUSY;
@@ -390,35 +449,35 @@ int sddc_read_async(sddc_dev_t *dev,
     {
         if (buf_num == 0)
             buf_num = 16;
-        
+
         if (buf_len == 0)
             buf_len = 16384;
 
+        dev->hardware->FX3producerOn(); // FX3 start the producer
+
         ringbuffer<int16_t> inputbuffer(buf_num);
-        inputbuffer.setBlockSize(buf_len);
+
         dev->hardware->StartStream(inputbuffer, buf_num);
 
+        uint32_t len = inputbuffer.getBlockSize();
         // read the data
         while (dev->status == DEVICE_RUNNING)
         {
             auto ptr = inputbuffer.getReadPtr();
-            cb((unsigned char*)ptr, buf_len * sizeof(int16_t), ctx);
+            cb((unsigned char *)ptr, len, ctx);
             inputbuffer.ReadDone();
         }
-
-        return 0;
     }
     else
     {
-
     }
 
+    dev->hardware->FX3producerOff(); // FX3 stop the producer
     dev->hardware->StopStream();
     dev->status = DEVICE_IDLE;
 
     return 0;
 }
-
 
 int sddc_cancel_async(sddc_dev_t *dev)
 {

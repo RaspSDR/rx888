@@ -51,32 +51,36 @@ getFILETIMEoffset()
   return (t);
 }
 
-int
-clock_gettime(int X, struct timeval* tv)
+int clock_gettime(int X, struct timeval *tv)
 {
-  LARGE_INTEGER           t;
-  FILETIME            f;
-  double                  microseconds;
-  static LARGE_INTEGER    offset;
-  static double           frequencyToMicroseconds;
-  static int              initialized = 0;
-  static BOOL             usePerformanceCounter = 0;
+  LARGE_INTEGER t;
+  FILETIME f;
+  double microseconds;
+  static LARGE_INTEGER offset;
+  static double frequencyToMicroseconds;
+  static int initialized = 0;
+  static BOOL usePerformanceCounter = 0;
 
-  if (!initialized) {
+  if (!initialized)
+  {
     LARGE_INTEGER performanceFrequency;
     initialized = 1;
     usePerformanceCounter = QueryPerformanceFrequency(&performanceFrequency);
-    if (usePerformanceCounter) {
+    if (usePerformanceCounter)
+    {
       QueryPerformanceCounter(&offset);
       frequencyToMicroseconds = (double)performanceFrequency.QuadPart / 1000000.;
     }
-    else {
+    else
+    {
       offset = getFILETIMEoffset();
       frequencyToMicroseconds = 10.;
     }
   }
-  if (usePerformanceCounter) QueryPerformanceCounter(&t);
-  else {
+  if (usePerformanceCounter)
+    QueryPerformanceCounter(&t);
+  else
+  {
     GetSystemTimeAsFileTime(&f);
     t.QuadPart = f.dwHighDateTime;
     t.QuadPart <<= 32;
@@ -92,10 +96,6 @@ clock_gettime(int X, struct timeval* tv)
 }
 #endif
 
-
-static void count_bytes_callback(uint32_t data_size, uint8_t *data,
-                                 void *context);
-
 static unsigned long long received_samples = 0;
 static unsigned long long total_samples = 0;
 static int num_callbacks;
@@ -104,22 +104,43 @@ static int runtime = 3000;
 static struct timespec clk_start, clk_end;
 static int stop_reception = 0;
 
-static double clk_diff() {
-  return ((double)clk_end.tv_sec + 1.0e-9*clk_end.tv_nsec) - 
-           ((double)clk_start.tv_sec + 1.0e-9*clk_start.tv_nsec);
+static double clk_diff()
+{
+  return ((double)clk_end.tv_sec + 1.0e-9 * clk_end.tv_nsec) -
+         ((double)clk_start.tv_sec + 1.0e-9 * clk_start.tv_nsec);
 }
 
+static void count_bytes_callback(unsigned char *buf, uint32_t len, void *ctx)
+{
+  if (stop_reception)
+    return;
+  ++num_callbacks;
+  unsigned N = len / sizeof(int16_t);
+  if (received_samples + N < total_samples)
+  {
+    if (sampleData)
+      memcpy(sampleData + received_samples, buf, len);
+    received_samples += N;
+  }
+  else
+  {
+    clock_gettime(CLOCK_REALTIME, &clk_end);
+    stop_reception = 1;
+    sddc_cancel_async((sddc_dev_t *)ctx);
+  }
+}
 
 int main(int argc, char **argv)
 {
-  if (argc < 3) {
+  if (argc < 3)
+  {
     fprintf(stderr, "usage: %s <sample rate> <vhf frequency> [<runtime_in_ms> [<output_filename>]\n", argv[0]);
     return -1;
   }
-  const char *outfilename = 0;
+  const char *outfilename = NULL;
   uint32_t sample_rate = 0.0;
-  uint64_t vhf_frequency = 100*1000*1000;  /* 100 MHz */
-  double vhf_attenuation = 20;  /* 20dB attenuation */
+  uint64_t vhf_frequency = 100 * 1000 * 1000; /* 100 MHz */
+  int vhf_attenuation = -20;                  /* 20dB attenuation */
 
   sscanf(argv[1], "%ld", &sample_rate);
   sscanf(argv[2], "%lld", &vhf_frequency);
@@ -128,78 +149,78 @@ int main(int argc, char **argv)
   if (4 < argc)
     outfilename = argv[4];
 
-  if (sample_rate <= 0) {
+  if (sample_rate <= 0)
+  {
     fprintf(stderr, "ERROR - given samplerate '%f' should be > 0\n", sample_rate);
     return -1;
   }
 
   int ret_val = -1;
 
-  sddc_dev_t *sddc ;
+  sddc_dev_t *sddc;
   int ret = sddc_open_raw(&sddc, 0);
-  if (ret < 0) {
+  if (ret < 0)
+  {
     fprintf(stderr, "ERROR - sddc_open() failed\n");
     return -1;
   }
 
-  if (sddc_set_sample_rate(sddc, sample_rate) < 0) {
+  if (sddc_set_sample_rate(sddc, sample_rate) < 0)
+  {
     fprintf(stderr, "ERROR - sddc_set_sample_rate() failed\n");
     goto DONE;
   }
 
   // enable tuner
-  if (sddc_set_direct_sampling(sddc, 0) < 0) {
+  if (sddc_set_direct_sampling(sddc, 0) < 0)
+  {
     fprintf(stderr, "ERROR - sddc_set_direct_sampling() failed\n");
     goto DONE;
   }
 
-  if (sddc_set_center_freq64(sddc, vhf_frequency) < 0) {
+  if (sddc_set_center_freq64(sddc, vhf_frequency) < 0)
+  {
     fprintf(stderr, "ERROR - sddc_set_vhf_frequency() failed\n");
     goto DONE;
   }
 
-  if (sddc_set_rf_gain(sddc, -vhf_attenuation) < 0) {
-    fprintf(stderr, "ERROR - sddc_set_rf_gain() failed\n");
+  if (sddc_set_rf_attenuator(sddc, vhf_attenuation) < 0)
+  {
+    fprintf(stderr, "ERROR - sddc_set_rf_attenuator() failed\n");
     goto DONE;
   }
 
   received_samples = 0;
   num_callbacks = 0;
-  if (sddc_start_streaming(sddc) < 0) {
-    fprintf(stderr, "ERROR - sddc_start_streaming() failed\n");
-    return -1;
-  }
 
   fprintf(stderr, "started streaming .. for %d ms ..\n", runtime);
   total_samples = (unsigned long long)(runtime * sample_rate / 1000.0);
 
   if (outfilename)
-    sampleData = (int16_t*)malloc(total_samples * sizeof(int16_t));
+    sampleData = (int16_t *)malloc(total_samples * sizeof(int16_t));
 
   /* todo: move this into a thread */
   stop_reception = 0;
   clock_gettime(CLOCK_REALTIME, &clk_start);
-  while (!stop_reception)
-    sddc_handle_events(sddc);
+
+  sddc_read_async(sddc, count_bytes_callback, sddc, 0, 0);
 
   fprintf(stderr, "finished. now stop streaming ..\n");
-  if (sddc_stop_streaming(sddc) < 0) {
-    fprintf(stderr, "ERROR - sddc_stop_streaming() failed\n");
-    return -1;
-  }
 
   double dur = clk_diff();
   fprintf(stderr, "received=%llu 16-Bit samples in %d callbacks\n", received_samples, num_callbacks);
   fprintf(stderr, "run for %f sec\n", dur);
-  fprintf(stderr, "approx. samplerate is %f kSamples/sec\n", received_samples / (1000.0*dur) );
+  fprintf(stderr, "approx. samplerate is %f kSamples/sec\n", received_samples / (1000.0 * dur));
 
-  if (outfilename && sampleData && received_samples) {
-    FILE * f = fopen(outfilename, "wb");
-    if (f) {
+  if (outfilename && sampleData && received_samples)
+  {
+    FILE *f = fopen(outfilename, "wb");
+    if (f)
+    {
       fprintf(stderr, "saving received real samples to file ..\n");
-      waveWriteHeader( (unsigned)(0.5 + sample_rate), 0U /*frequency*/, 16 /*bitsPerSample*/, 1 /*numChannels*/, f);
-      for ( unsigned long long off = 0; off + 65536 < received_samples; off += 65536 )
-        waveWriteSamples(f,  sampleData + off, 65536, 0 /*needCleanData*/);
+      waveWriteHeader((unsigned)(0.5 + sample_rate), 0U /*frequency*/, 16 /*bitsPerSample*/, 1 /*numChannels*/, f);
+      for (unsigned long long off = 0; off + 65536 < received_samples; off += 65536)
+        waveWriteSamples(f, sampleData + off, 65536, 0 /*needCleanData*/);
       waveFinalizeHeader(f);
       fclose(f);
     }
@@ -212,23 +233,4 @@ DONE:
   sddc_close(sddc);
 
   return ret_val;
-}
-
-static void count_bytes_callback(uint32_t data_size,
-                                 uint8_t *data,
-                                 void *context)
-{
-  if (stop_reception)
-    return;
-  ++num_callbacks;
-  unsigned N = data_size / sizeof(int16_t);
-  if ( received_samples + N < total_samples ) {
-    if (sampleData)
-      memcpy( sampleData+received_samples, data, data_size);
-    received_samples += N;
-  }
-  else {
-    clock_gettime(CLOCK_REALTIME, &clk_end);
-    stop_reception = 1;
-  }
 }

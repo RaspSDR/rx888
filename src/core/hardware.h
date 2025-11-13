@@ -13,12 +13,12 @@ public:
     virtual float getGain() { return BBRF103_GAINFACTOR; }
     virtual void Initialize(uint32_t samplefreq) = 0;
     virtual bool UpdatemodeRF(rf_mode mode) = 0;
-    virtual bool UpdateattRF(int attIndex) = 0;
     virtual uint64_t TuneLo(uint64_t freq) = 0;
 
     virtual int getRFSteps(const float** steps ) const { return 0; }
     virtual int getIFSteps(const float** steps ) const { return 0; }
     virtual bool UpdateGainIF(int attIndex) { return false; }
+    virtual bool UpdateattRF(int attIndex) { return false; }
 
     RadioModel getModel() const { return model; }
 
