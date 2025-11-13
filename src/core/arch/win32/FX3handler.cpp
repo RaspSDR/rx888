@@ -323,7 +323,7 @@ bool fx3handler::FinishDataXfer(void** context)
 
 	auto requested_size = readContext->size;
 	if (!EndPt->FinishDataXfer(readContext->buffer, readContext->size, &readContext->overlap, readContext->context)) {
-		DbgPrintf("FinishDataXfer Failed. NTSTATUS = 0x%08X\n", EndPt->NtStatus);
+		DbgPrintf("FinishDataXfer Failed. NTSTATUS = 0x%08X USBStatus = 0x%08x\n", EndPt->NtStatus, EndPt->UsbdStatus);
 		return false;
 	}
 

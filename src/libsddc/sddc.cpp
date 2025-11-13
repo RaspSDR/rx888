@@ -448,7 +448,7 @@ int sddc_read_async(sddc_dev_t *dev,
     if (dev->raw_mode)
     {
         if (buf_num == 0)
-            buf_num = 16;
+            buf_num = 64;
 
         if (buf_len == 0)
             buf_len = 16384;
@@ -457,7 +457,9 @@ int sddc_read_async(sddc_dev_t *dev,
 
         ringbuffer<int16_t> inputbuffer(buf_num);
 
-        dev->hardware->StartStream(inputbuffer, buf_num);
+        inputbuffer.setBlockSize(buf_len);
+
+        dev->hardware->StartStream(inputbuffer, QUEUE_SIZE);
 
         uint32_t len = inputbuffer.getBlockSize();
         // read the data

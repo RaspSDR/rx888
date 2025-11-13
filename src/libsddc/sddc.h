@@ -284,9 +284,8 @@ SDDC_API int sddc_read_sync(sddc_dev_t *dev, void *buf, int len, int *n_read);
 typedef void(*sddc_read_async_cb_t)(unsigned char *buf, uint32_t len, void *ctx);
 
 /*!
- * Read samples from the device asynchronously. This function will not block.
- *
- * Note: this is different from rtlsdr_read_async() which will block.
+ * Read samples from the device asynchronously. This function will block
+ * until the read is canceled via sddc_cancel_async().
  *
  * \param dev the device handle given by rtlsdr_open()
  * \param cb callback function to return received samples

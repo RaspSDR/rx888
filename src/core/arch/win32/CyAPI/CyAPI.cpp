@@ -100,8 +100,7 @@ CCyUSBDevice::~CCyUSBDevice(void)
     Close();
 
     if (hDevNotification) {
-        if (! UnregisterDeviceNotification(hDevNotification))
-            throw "Failed to close the device notification handle.";
+        UnregisterDeviceNotification(hDevNotification);
         hDevNotification = 0;
     }
 

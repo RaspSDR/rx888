@@ -28,72 +28,7 @@
 #include "wavewrite.h"
 
 #if _WIN32
-#include <Windows.h>
-#define CLOCK_REALTIME 0
-LARGE_INTEGER
-getFILETIMEoffset()
-{
-  SYSTEMTIME s;
-  FILETIME f;
-  LARGE_INTEGER t;
-
-  s.wYear = 1970;
-  s.wMonth = 1;
-  s.wDay = 1;
-  s.wHour = 0;
-  s.wMinute = 0;
-  s.wSecond = 0;
-  s.wMilliseconds = 0;
-  SystemTimeToFileTime(&s, &f);
-  t.QuadPart = f.dwHighDateTime;
-  t.QuadPart <<= 32;
-  t.QuadPart |= f.dwLowDateTime;
-  return (t);
-}
-
-int clock_gettime(int X, struct timeval *tv)
-{
-  LARGE_INTEGER t;
-  FILETIME f;
-  double microseconds;
-  static LARGE_INTEGER offset;
-  static double frequencyToMicroseconds;
-  static int initialized = 0;
-  static BOOL usePerformanceCounter = 0;
-
-  if (!initialized)
-  {
-    LARGE_INTEGER performanceFrequency;
-    initialized = 1;
-    usePerformanceCounter = QueryPerformanceFrequency(&performanceFrequency);
-    if (usePerformanceCounter)
-    {
-      QueryPerformanceCounter(&offset);
-      frequencyToMicroseconds = (double)performanceFrequency.QuadPart / 1000000.;
-    }
-    else
-    {
-      offset = getFILETIMEoffset();
-      frequencyToMicroseconds = 10.;
-    }
-  }
-  if (usePerformanceCounter)
-    QueryPerformanceCounter(&t);
-  else
-  {
-    GetSystemTimeAsFileTime(&f);
-    t.QuadPart = f.dwHighDateTime;
-    t.QuadPart <<= 32;
-    t.QuadPart |= f.dwLowDateTime;
-  }
-
-  t.QuadPart -= offset.QuadPart;
-  microseconds = (double)t.QuadPart / frequencyToMicroseconds;
-  t.QuadPart = microseconds;
-  tv->tv_sec = t.QuadPart / 1000000;
-  tv->tv_usec = t.QuadPart % 1000000;
-  return (0);
-}
+#include "win_clock.h"
 #endif
 
 static unsigned long long received_samples = 0;
@@ -101,14 +36,15 @@ static unsigned long long total_samples = 0;
 static int num_callbacks;
 static int16_t *sampleData = 0;
 static int runtime = 3000;
-static struct timespec clk_start, clk_end;
+static struct timeval clk_start, clk_end;
 static int stop_reception = 0;
 
-static double clk_diff()
+static inline double clk_diff()
 {
-  return ((double)clk_end.tv_sec + 1.0e-9 * clk_end.tv_nsec) -
-         ((double)clk_start.tv_sec + 1.0e-9 * clk_start.tv_nsec);
+  return ((double)clk_end.tv_sec + 1.0e-6 * clk_end.tv_usec) -
+         ((double)clk_start.tv_sec + 1.0e-6 * clk_start.tv_usec);
 }
+
 
 static void count_bytes_callback(unsigned char *buf, uint32_t len, void *ctx)
 {
@@ -194,7 +130,7 @@ int main(int argc, char **argv)
   num_callbacks = 0;
 
   fprintf(stderr, "started streaming .. for %d ms ..\n", runtime);
-  total_samples = (unsigned long long)(runtime * sample_rate / 1000.0);
+  total_samples = ((unsigned long long)runtime * sample_rate / 1000.0);
 
   if (outfilename)
     sampleData = (int16_t *)malloc(total_samples * sizeof(int16_t));
