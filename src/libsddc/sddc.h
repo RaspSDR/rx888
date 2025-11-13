@@ -166,7 +166,7 @@ SDDC_API int sddc_get_xtal_freq(sddc_dev_t *dev, uint32_t *rtl_freq);
  * \param value gain value
  * \return 0 on success
  */
-SDDC_API int sddc_set_if_gain(sddc_dev_t *dev, int value);
+SDDC_API int sddc_set_if_gain(sddc_dev_t *dev, float value);
 
 /*!
  * Set the RF attenuator value.
@@ -175,7 +175,7 @@ SDDC_API int sddc_set_if_gain(sddc_dev_t *dev, int value);
  * \param value attenuator value
  * \return 0 on success
  */
-SDDC_API int sddc_set_rf_attenuator(sddc_dev_t *dev, int value);
+SDDC_API int sddc_set_rf_attenuator(sddc_dev_t *dev, float value);
 
 /*!
  * Get the IF gain value.
@@ -184,7 +184,16 @@ SDDC_API int sddc_set_rf_attenuator(sddc_dev_t *dev, int value);
  * \param value pointer to store gain value
  * \return 0 on success
  */
-SDDC_API int sddc_get_if_gain(sddc_dev_t *dev, int *value);
+SDDC_API int sddc_get_if_gain(sddc_dev_t *dev, float *value);
+
+/*!
+ * Get the IF gain value.
+ *
+ * \param dev the device handle given by sddc_open()
+ * \param value pointer to store gain value
+ * \return 0 on success
+ */
+SDDC_API int sddc_get_if_gain_range(sddc_dev_t *dev, float *min, float *max);
 
 /*!
  * Get the RF attenuator value.
@@ -193,7 +202,17 @@ SDDC_API int sddc_get_if_gain(sddc_dev_t *dev, int *value);
  * \param value pointer to store attenuator value
  * \return 0 on success
  */
-SDDC_API int sddc_get_rf_attenuator(sddc_dev_t *dev, int *value);
+SDDC_API int sddc_get_rf_attenuator(sddc_dev_t *dev, float *value);
+
+/*!
+ * Get the RF attenuator value range.
+ *
+ * \param dev the device handle given by sddc_open()
+ * \param min pointer to store return min value
+ * \param max pointer to store return max value
+ * \return 0 on success
+ */
+SDDC_API int sddc_get_rf_attenuator_range(sddc_dev_t *dev, float *min, float *max);
 
 /*!
  * Get actual frequency the device is tuned to.

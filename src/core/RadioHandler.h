@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include <math.h>
 #include <stdint.h>
-#include "FX3Class.h"
+#include "fx3class.h"
 #include "radio/RadioHardware.h"
 #include "dsp/ringbuffer.h"
 #include "../Interface.h"

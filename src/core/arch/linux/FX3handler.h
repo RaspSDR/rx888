@@ -7,7 +7,7 @@
 #define	STREAMER_ID   (0x00F1)
 #define	BOOTLOADER_ID (0x00F3)
 
-#include "../../FX3Class.h"
+#include "../../fx3class.h"
 #include "usb_device.h"
 #include "streaming.h"
 #include "../../dsp/ringbuffer.h"

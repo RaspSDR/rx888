@@ -56,6 +56,7 @@ void RadioHandlerClass::OnDataPacket()
 }
 
 RadioHandlerClass::RadioHandlerClass() :
+	r2iqCntrl(nullptr),
 	DbgPrintFX3(nullptr),
 	GetConsoleIn(nullptr),
 	run(false),
@@ -67,8 +68,7 @@ RadioHandlerClass::RadioHandlerClass() :
 	modeRF(NOMODE),
 	adcrate(DEFAULT_ADC_FREQ),
 	fc(0.0f),
-	hardware(new DummyRadio(nullptr)),
-	r2iqCntrl(nullptr)
+	hardware(new DummyRadio(nullptr))
 {
 	stateFineTune = new shift_limited_unroll_C_sse_data_t();
 }

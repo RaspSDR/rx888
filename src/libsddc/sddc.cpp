@@ -1,10 +1,11 @@
 #include <assert.h>
+#include <string.h>
 
 #include "sddc.h"
 #include "config.h"
 #include "r2iq.h"
 #include "hardware.h"
-#include "FX3Class.h"
+#include "fx3class.h"
 
 enum DeviceStatus
 {
@@ -33,8 +34,8 @@ struct sddc_dev
     // stats which supports get
     uint64_t center_frequency;
     uint32_t sample_rate;
-    int rf_attenuator;
-    int if_gain;
+    float rf_attenuator;
+    float if_gain;
     int direct_sampling;
 };
 
@@ -167,8 +168,14 @@ int sddc_close(sddc_dev_t *dev)
     if (!dev)
         return -EINVAL;
 
-    if (dev->hardware)
+    if (dev->status != DEVICE_IDLE) {
+        return -EBUSY;
+    }
+
+    if (dev->hardware) {
+        dev->hardware->FX3producerOff();
         delete dev->hardware;
+    }
 
     delete dev;
 
@@ -291,7 +298,7 @@ int sddc_set_center_freq64(sddc_dev_t *dev, uint64_t freq)
     return 0;
 }
 
-int sddc_set_rf_attenuator(sddc_dev_t *dev, int value)
+int sddc_set_rf_attenuator(sddc_dev_t *dev, float value)
 {
     if (!dev)
         return -EINVAL;
@@ -315,7 +322,7 @@ int sddc_set_rf_attenuator(sddc_dev_t *dev, int value)
     return 0;
 }
 
-int sddc_get_rf_attenuator(sddc_dev_t *dev, int *value)
+int sddc_get_rf_attenuator(sddc_dev_t *dev, float *value)
 {
     if (!dev || !value)
         return -EINVAL;
@@ -326,7 +333,7 @@ int sddc_get_rf_attenuator(sddc_dev_t *dev, int *value)
     return 0;
 }
 
-int sddc_set_if_gain(sddc_dev_t *dev, int value)
+int sddc_set_if_gain(sddc_dev_t *dev, float value)
 {
     if (!dev)
         return -EINVAL;
@@ -350,7 +357,7 @@ int sddc_set_if_gain(sddc_dev_t *dev, int value)
     return 0;
 }
 
-int sddc_get_if_gain(sddc_dev_t *dev, int *value)
+int sddc_get_if_gain(sddc_dev_t *dev, float *value)
 {
     if (!dev || !value)
         return -EINVAL;
