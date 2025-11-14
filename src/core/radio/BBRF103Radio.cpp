@@ -30,7 +30,7 @@ BBRF103Radio::BBRF103Radio(fx3class* fx3, RadioModel model)
     
 }
 
-void BBRF103Radio::Initialize(uint32_t adc_rate)
+void BBRF103Radio::UpdateAdcFreq(uint32_t adc_rate)
 {
     this->SampleRate = adc_rate;
     Fx3->Control(STARTADC, adc_rate);

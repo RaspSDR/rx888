@@ -7,9 +7,10 @@ add_executable(unittest ${UNITTESTS})
 target_include_directories(unittest PUBLIC "${LIBFFTW_INCLUDE_DIR}")
 target_link_directories(unittest PUBLIC "${LIBFFTW_LIBRARY_DIRS}")
 
-include_directories("." "../core")
+include_directories("." "../core" "../libsddc")
 
 target_link_libraries(unittest PRIVATE SDDC_CORE)
+target_link_libraries(unittest PUBLIC sddc)
 if (MSVC)
 else()
   target_link_libraries(unittest PUBLIC pthread ${ASANLIB})

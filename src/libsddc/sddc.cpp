@@ -3,9 +3,10 @@
 
 #include "sddc.h"
 #include "config.h"
-#include "r2iq.h"
+#include "fft_mt_r2iq.h"
 #include "hardware.h"
 #include "fx3class.h"
+#include "pffft/pf_mixer.h"
 
 enum DeviceStatus
 {
@@ -18,13 +19,12 @@ enum DeviceStatus
 struct sddc_dev
 {
     RadioHardware *hardware;
-    uint8_t led;
-    int samplerateidx;
-    uint32_t target_sample_rate;
 
+    // only change when open the device
     bool raw_mode;
 
     r2iqControlClass *r2iq;
+    shift_limited_unroll_C_sse_data_t stateFineTune;
 
     sddc_read_async_cb_t callback;
     void *callback_context;
@@ -33,10 +33,18 @@ struct sddc_dev
 
     // stats which supports get
     uint64_t center_frequency;
-    uint32_t sample_rate;
     float rf_attenuator;
     float if_gain;
+    uint8_t led;
+
+    std::mutex fc_mutex;
+    float fc;
+
+    // only support change when the device is idle
     int direct_sampling;
+    uint32_t target_sample_rate;
+    int samplerateidx;
+
 };
 
 static void Callback(void *context, const float *data, uint32_t len)
@@ -111,6 +119,15 @@ int sddc_get_index_by_serial(const char *serial)
 
 int sddc_set_xtal_freq(sddc_dev_t *dev, uint32_t rtl_freq)
 {
+    if (!dev)
+        return -EINVAL;
+
+    if (dev->status != DEVICE_IDLE) {
+        return -EBUSY;
+    }
+
+    // TODO:
+
     return -ENOSYS;
 }
 
@@ -147,7 +164,11 @@ int sddc_open(sddc_dev_t **dev, uint32_t index)
     }
 
     ret_val->hardware->FX3SetGPIO(LED_BLUE);
-    ret_val->hardware->Initialize(DEFAULT_ADC_FREQ);
+    ret_val->target_sample_rate = DEFAULT_ADC_FREQ / 2;
+
+    // start the r2iq processor
+    ret_val->r2iq = new fft_mt_r2iq();
+
     *dev = ret_val;
 
     return 0;
@@ -210,46 +231,33 @@ int sddc_set_sample_rate(sddc_dev_t *dev, uint32_t rate)
 
     if (dev->raw_mode)
     {
-        // in the raw mode, we set xtal to 2x of sample rate
-        // this is not good way to use the device as the limitation of
-        // LPF in front of ADC. However user may already have another LPF
-        // after the attenna.
-        dev->hardware->Initialize(rate * 2);
-        dev->samplerateidx = 0; // not used
+        // we only allow 64Msps and 32Msps at raw mode
+        if (rate == 32000000)
+            dev->target_sample_rate = 32000000;
+        else
+            return -EINVAL;
     }
     else
     {
-        dev->target_sample_rate = 0;
-        switch ((int64_t)rate)
-        {
-        case 32000000:
-            dev->samplerateidx = 0;
-            break;
-        case 16000000:
-            dev->samplerateidx = 1;
-            break;
-        case 8000000:
-            dev->samplerateidx = 2;
-            break;
-        case 4000000:
-            dev->samplerateidx = 3;
-            break;
-        case 2000000:
-            dev->samplerateidx = 4;
-            break;
-        default:
-            if (rate < 2000000)
-            {
-                dev->samplerateidx = 4;
-                // we need futher down-sampling
-                dev->target_sample_rate = rate;
-                break;
-            }
-            else
-            {
-                return -EINVAL;
-            }
+        // we only allow 32Msps, 16Msps, 8Msps, 4Msps, 2Msps
+        // and various rate under 2Msps
+        if (rate == 32000000)
+            dev->target_sample_rate = 32000000;
+        else if (rate == 16000000)
+            dev->target_sample_rate = 16000000;
+        else if (rate == 8000000)
+            dev->target_sample_rate = 8000000;
+        else if (rate == 4000000)
+            dev->target_sample_rate = 4000000;
+        else if (rate == 2000000)
+            dev->target_sample_rate = 2000000;
+        else if (rate < 2000000) {
+            // TODO: Support more flexible sample rates
+            // return 0;
+            return -EINVAL;
         }
+        else
+            return -EINVAL;
     }
 
     return 0;
@@ -274,7 +282,7 @@ int sddc_set_center_freq(sddc_dev_t *dev, uint32_t freq)
     return sddc_set_center_freq64(dev, (uint64_t)freq);
 }
 
-int sddc_set_center_freq64(sddc_dev_t *dev, uint64_t freq)
+int sddc_set_center_freq64(sddc_dev_t *dev, uint64_t wishedFreq)
 {
     if (!dev)
         return -EINVAL;
@@ -288,11 +296,22 @@ int sddc_set_center_freq64(sddc_dev_t *dev, uint64_t freq)
     if (dev->direct_sampling)
     {
         // set software NCO frequency
+        uint64_t actLo = dev->hardware->TuneLo(wishedFreq);
+        
+        // we need shift the samples
+        int64_t offset = wishedFreq - actLo;
+        float fc = dev->r2iq->setFreqOffset(offset / (dev->target_sample_rate / 2.0f));
+        if (dev->fc != fc)
+        {
+            std::unique_lock<std::mutex> lk(dev->fc_mutex);
+            dev->stateFineTune = shift_limited_unroll_C_sse_init(fc, 0.0F);
+            dev->fc = fc;
+        }
     }
     else
     {
         // set tuner LO frequency
-        uint64_t actLo = dev->hardware->TuneLo(freq);
+        dev->hardware->TuneLo(wishedFreq);
     }
 
     return 0;
@@ -373,24 +392,7 @@ uint32_t sddc_get_sample_rate(sddc_dev_t *dev)
     if (!dev)
         return 0;
 
-    switch (dev->samplerateidx)
-    {
-    case 0:
-        return 32000000;
-    case 1:
-        return 16000000;
-    case 2:
-        return 8000000;
-    case 3:
-        return 4000000;
-    case 4:
-        if (dev->target_sample_rate != 0)
-            return dev->target_sample_rate;
-        else
-            return 2000000;
-    default:
-        return 0;
-    }
+    return dev->target_sample_rate;
 }
 
 /*!
@@ -428,16 +430,6 @@ int sddc_get_direct_sampling(sddc_dev_t *dev)
     return dev->direct_sampling;
 }
 
-int sddc_read_sync(sddc_dev_t *dev, void *buf, int len, int *n_read)
-{
-    if (dev->status != DEVICE_IDLE)
-        return -EBUSY;
-
-    // Not Implemented
-
-    return -1;
-}
-
 int sddc_read_async(sddc_dev_t *dev,
                     sddc_read_async_cb_t cb,
                     void *ctx,
@@ -460,11 +452,14 @@ int sddc_read_async(sddc_dev_t *dev,
         if (buf_len == 0)
             buf_len = 16384;
 
+        // initialize the hardware for raw mode
+        dev->hardware->UpdateAdcFreq(dev->target_sample_rate * 2);
         dev->hardware->FX3producerOn(); // FX3 start the producer
 
         ringbuffer<int16_t> inputbuffer(buf_num);
 
         inputbuffer.setBlockSize(buf_len);
+        inputbuffer.Start();
 
         dev->hardware->StartStream(inputbuffer, QUEUE_SIZE);
 
@@ -476,13 +471,87 @@ int sddc_read_async(sddc_dev_t *dev,
             cb((unsigned char *)ptr, len, ctx);
             inputbuffer.ReadDone();
         }
+        inputbuffer.Stop();
+
+        dev->hardware->StopStream();
+        dev->hardware->FX3producerOff(); // FX3 stop the producer
     }
     else
     {
+        if (buf_num == 0)
+            buf_num = 64;
+
+        if (buf_len == 0)
+            buf_len = 16384;
+
+        ringbuffer<int16_t> inputbuffer(buf_num);
+        ringbuffer<float> outputbuffer(buf_num);
+
+        outputbuffer.setBlockSize(buf_len * 2 * sizeof(float));
+
+        dev->hardware->UpdateAdcFreq(DEFAULT_ADC_FREQ);
+        dev->r2iq->Init(dev->hardware->getGain(), &inputbuffer, &outputbuffer);
+
+        // determine decimation index
+        int samplerateidx;
+        switch(dev->target_sample_rate)
+        {
+            case 32000000:
+                samplerateidx = 1;
+                break;
+            case 16000000:
+                samplerateidx = 2;
+                break;
+            case 8000000:
+                samplerateidx = 3;
+                break;
+            case 4000000:
+                samplerateidx = 4;
+                break;
+            case 2000000:
+                samplerateidx = 5;
+                break;
+            default:
+                samplerateidx = 5; // 2Msps with further decimation
+                // TODO: support more flexible sample rates
+                break;
+
+        }
+
+        dev->r2iq->setDecimate(samplerateidx); // no decimation
+        dev->r2iq->setSideband(dev->direct_sampling == 1); // LSB for tuner mode, USB for direct sampling mode
+        dev->r2iq->TurnOn();
+
+        dev->hardware->FX3producerOn(); // FX3 start the producer
+        dev->hardware->StartStream(inputbuffer, QUEUE_SIZE);
+
+    	auto len = outputbuffer.getBlockSize() / 2 / sizeof(float);
+
+        while (dev->status == DEVICE_RUNNING)
+        {
+            auto buf = outputbuffer.getReadPtr();
+
+            if (dev->status != DEVICE_RUNNING)
+                break;
+
+            if (dev->fc != 0.0f)
+            {
+                std::unique_lock<std::mutex> lk(dev->fc_mutex);
+                shift_limited_unroll_C_sse_inp_c((complexf*)buf, len, &dev->stateFineTune);
+            }
+
+            cb((unsigned char *)buf, len, ctx);
+
+            outputbuffer.ReadDone();
+        }
+
+        dev->r2iq->TurnOff();
+        outputbuffer.Stop();
+        inputbuffer.Stop();
+        dev->hardware->StopStream();
+        dev->hardware->FX3producerOff(); // FX3 stop the producer
     }
 
-    dev->hardware->FX3producerOff(); // FX3 stop the producer
-    dev->hardware->StopStream();
     dev->status = DEVICE_IDLE;
 
     return 0;

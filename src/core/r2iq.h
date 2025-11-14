@@ -29,8 +29,8 @@ public:
     void setDecimate(int dec) {this->mdecimation = dec; }
 
     virtual void Init(float gain, ringbuffer<int16_t>* input, ringbuffer<float>* obuffers) {}
-    virtual void TurnOn() { this->r2iqOn = true; }
-    virtual void TurnOff(void) { this->r2iqOn = false; }
+    virtual void TurnOn() = 0;
+    virtual void TurnOff(void) = 0;
     virtual bool IsOn(void) { return this->r2iqOn; }
     virtual float setFreqOffset(float offset) { return 0; };
 

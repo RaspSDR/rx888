@@ -29,7 +29,7 @@ RXLucyRadio::RXLucyRadio(fx3class *fx3)
     }
 }
 
-void RXLucyRadio::Initialize(uint32_t adc_rate)
+void RXLucyRadio::UpdateAdcFreq(uint32_t adc_rate)
 {
     SampleRate = adc_rate;
     Fx3->Control(STARTADC, adc_rate);

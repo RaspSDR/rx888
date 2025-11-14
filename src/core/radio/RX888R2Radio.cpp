@@ -44,7 +44,7 @@ RX888R2Radio::RX888R2Radio(fx3class *fx3)
     }
 }
 
-void RX888R2Radio::Initialize(uint32_t adc_rate)
+void RX888R2Radio::UpdateAdcFreq(uint32_t adc_rate)
 {
     SampleRate = adc_rate;
     Fx3->Control(STARTADC, adc_rate);

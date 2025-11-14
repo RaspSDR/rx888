@@ -93,7 +93,6 @@ bool RadioHandlerClass::Init(fx3class* Fx3, r2iqControlClass* r2iqCntrl)
 	this->hardware = CreateRadioHardwareInstance(Fx3);
 	
 	adcrate = adcnominalfreq;
-	hardware->Initialize(adcnominalfreq);
 
 	return true;
 }
@@ -102,6 +101,7 @@ bool RadioHandlerClass::Start(int srate_idx, void (*callback)(void*context, cons
 {
 	Stop();
 	DbgPrintf("RadioHandlerClass::Start\n");
+	hardware->UpdateAdcFreq(adcrate);
 
 	this->Callback = callback;
 	this->callbackContext = context;
@@ -174,9 +174,8 @@ bool RadioHandlerClass::Close()
 
 bool RadioHandlerClass::UpdateSampleRate(uint32_t samplefreq)
 {
-	hardware->Initialize(samplefreq);
-
 	this->adcrate = samplefreq;
+	hardware->UpdateAdcFreq(samplefreq);
 
 	return 0;
 }

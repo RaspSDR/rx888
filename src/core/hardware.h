@@ -12,7 +12,7 @@ public:
     virtual const char *getName() = 0;
     virtual rf_mode PrepareLo(uint64_t freq) = 0;
     virtual float getGain() { return BBRF103_GAINFACTOR; }
-    virtual void Initialize(uint32_t samplefreq) = 0;
+    virtual void UpdateAdcFreq(uint32_t samplefreq) {}
     virtual bool UpdatemodeRF(rf_mode mode) = 0;
     virtual uint64_t TuneLo(uint64_t freq) = 0;
 

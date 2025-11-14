@@ -146,8 +146,6 @@ Frequency value used to clock ADC in Hz
 .B sddc_get_xtal_freq(sddc_dev_t *dev, uint32_t *rtl_freq)
 Get crystal oscillator frequencies used for the ADC.
 .RS
-.B Note:
-Usually both ICs use the same clock.
 .B Parameters:
 .IP dev 10
 Device handle given by sddc_open()
@@ -260,7 +258,7 @@ In Hz otherwise
 
 .SS Gain and Attenuation Control
 .TP
-.B sddc_set_if_gain(sddc_dev_t *dev, int value)
+.B sddc_set_if_gain(sddc_dev_t *dev, float value)
 Set the IF gain value.
 .RS
 .B Parameters:
@@ -273,7 +271,7 @@ Gain value
 .RE
 
 .TP
-.B sddc_get_if_gain(sddc_dev_t *dev, int *value)
+.B sddc_get_if_gain(sddc_dev_t *dev, float *value)
 Get the IF gain value.
 .RS
 .B Parameters:
@@ -286,7 +284,22 @@ Pointer to store gain value
 .RE
 
 .TP
-.B sddc_set_rf_attenuator(sddc_dev_t *dev, int value)
+.B sddc_get_if_gain_range(sddc_dev_t *dev, float *min, float *max)
+Get the IF gain value range.
+.RS
+.B Parameters:
+.IP dev 10
+Device handle given by sddc_open()
+.IP min 10
+Pointer to store minimum gain value
+.IP max 10
+Pointer to store maximum gain value
+.B Returns:
+0 on success
+.RE
+
+.TP
+.B sddc_set_rf_attenuator(sddc_dev_t *dev, float value)
 Set the RF attenuator value.
 .RS
 .B Parameters:
@@ -299,7 +312,7 @@ Attenuator value
 .RE
 
 .TP
-.B sddc_get_rf_attenuator(sddc_dev_t *dev, int *value)
+.B sddc_get_rf_attenuator(sddc_dev_t *dev, float *value)
 Get the RF attenuator value.
 .RS
 .B Parameters:
@@ -307,6 +320,21 @@ Get the RF attenuator value.
 Device handle given by sddc_open()
 .IP value 10
 Pointer to store attenuator value
+.B Returns:
+0 on success
+.RE
+
+.TP
+.B sddc_get_rf_attenuator_range(sddc_dev_t *dev, float *min, float *max)
+Get the RF attenuator value range.
+.RS
+.B Parameters:
+.IP dev 10
+Device handle given by sddc_open()
+.IP min 10
+Pointer to store minimum attenuator value
+.IP max 10
+Pointer to store maximum attenuator value
 .B Returns:
 0 on success
 .RE
@@ -346,34 +374,6 @@ Enabled
 .RE
 
 .SS Data Streaming
-.TP
-.B sddc_reset_buffer(sddc_dev_t *dev)
-Reset the internal sample buffer.
-.RS
-.B Parameters:
-.IP dev 10
-Device handle given by sddc_open()
-.B Returns:
-0 on success
-.RE
-
-.TP
-.B sddc_read_sync(sddc_dev_t *dev, void *buf, int len, int *n_read)
-Read samples from the device synchronously.
-.RS
-.B Parameters:
-.IP dev 10
-Device handle given by sddc_open()
-.IP buf 10
-Buffer to store received samples
-.IP len 10
-Length of buffer in bytes
-.IP n_read 10
-Pointer to store number of bytes actually read
-.B Returns:
-0 on success
-.RE
-
 .TP
 .B sddc_read_async(sddc_dev_t *dev, sddc_read_async_cb_t cb, void *ctx, uint32_t buf_num, uint32_t buf_len)
 Read samples from the device asynchronously. This function will block until the read is canceled via sddc_cancel_async().

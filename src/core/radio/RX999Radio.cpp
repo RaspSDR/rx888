@@ -24,7 +24,7 @@ RX999Radio::RX999Radio(fx3class *fx3)
     }
 }
 
-void RX999Radio::Initialize(uint32_t adc_rate)
+void RX999Radio::UpdateAdcFreq(uint32_t adc_rate)
 {
     SampleRate = adc_rate;
     Fx3->Control(STARTADC, adc_rate);

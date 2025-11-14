@@ -57,6 +57,7 @@
 extern "C" {
 #endif
 
+struct sddc_dev;
 typedef struct sddc_dev sddc_dev_t;
 
 SDDC_API uint32_t sddc_get_device_count(void);
@@ -151,7 +152,6 @@ SDDC_API int sddc_set_xtal_freq(sddc_dev_t *dev, uint32_t rtl_freq);
 /*!
  * Get crystal oscillator frequencies used for the ADC.
  *
- * Usually both ICs use the same clock.
  *
  * \param dev the device handle given by rtlsdr_open()
  * \param rtl_freq frequency value used to clock the ADC in Hz
@@ -280,25 +280,6 @@ SDDC_API int sddc_set_direct_sampling(sddc_dev_t *dev, int on);
 SDDC_API int sddc_get_direct_sampling(sddc_dev_t *dev);
 
 /* streaming functions */
-
-/*!
- * Reset the internal sample buffer.
- *
- * \param dev the device handle given by sddc_open()
- * \return 0 on success
- */
-SDDC_API int sddc_reset_buffer(sddc_dev_t *dev);
-
-/*!
- * Read samples from the device synchronously.
- *
- * \param dev the device handle given by sddc_open()
- * \param buf buffer to store received samples
- * \param len length of buffer in bytes
- * \param n_read pointer to store number of bytes actually read
- * \return 0 on success
- */
-SDDC_API int sddc_read_sync(sddc_dev_t *dev, void *buf, int len, int *n_read);
 
 typedef void(*sddc_read_async_cb_t)(unsigned char *buf, uint32_t len, void *ctx);
 

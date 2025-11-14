@@ -11,7 +11,7 @@ public:
     const char* getName() override { return "BBRF103"; }
     float getGain() override { return BBRF103_GAINFACTOR; }
     rf_mode PrepareLo(uint64_t freq) override;
-    void Initialize(uint32_t samplefreq) override;
+    void UpdateAdcFreq(uint32_t samplefreq) override;
     bool UpdatemodeRF(rf_mode mode) override;
     uint64_t TuneLo(uint64_t freq) override;
     bool UpdateattRF(int attIndex) override;
@@ -44,7 +44,7 @@ public:
     const char* getName() override { return "RX888 mkII"; }
     float getGain() override { return RX888mk2_GAINFACTOR; }
     rf_mode PrepareLo(uint64_t freq) override;
-    void Initialize(uint32_t samplefreq) override;
+    void UpdateAdcFreq(uint32_t samplefreq) override;
     bool UpdatemodeRF(rf_mode mode) override;
     uint64_t TuneLo(uint64_t freq) override;
     bool UpdateattRF(int attIndex) override;
@@ -73,7 +73,7 @@ public:
     const char* getName() override { return "RX888 mkIII"; }
     float getGain() override { return RX888mk2_GAINFACTOR; }
     rf_mode PrepareLo(uint64_t freq) override;
-    void Initialize(uint32_t samplefreq) override;
+    void UpdateAdcFreq(uint32_t samplefreq) override;
     bool UpdatemodeRF(rf_mode mode) override;
     uint64_t TuneLo(uint64_t freq) override;
     bool UpdateattRF(int attIndex) override;
@@ -103,7 +103,7 @@ public:
     float getGain() override { return RX888_GAINFACTOR; }
 
     rf_mode PrepareLo(uint64_t freq) override;
-    void Initialize(uint32_t samplefreq) override;
+    void UpdateAdcFreq(uint32_t samplefreq) override;
     bool UpdatemodeRF(rf_mode mode) override;
     uint64_t TuneLo(uint64_t freq) override;
     bool UpdateattRF(int attIndex) override;
@@ -127,8 +127,6 @@ public:
 
     rf_mode PrepareLo(uint64_t freq) override;
 
-    void Initialize(uint32_t samplefreq) override {};
-
     bool UpdatemodeRF(rf_mode mode) override;
 
     uint64_t TuneLo(uint64_t freq) override { return 0; }
@@ -149,7 +147,7 @@ public:
     float getGain() override { return HF103_GAINFACTOR; }
 
     rf_mode PrepareLo(uint64_t freq) override;
-    void Initialize(uint32_t samplefreq) override;
+    void UpdateAdcFreq(uint32_t samplefreq) override;
     bool UpdatemodeRF(rf_mode mode) override;
     uint64_t TuneLo(uint64_t freq) override ;
     bool UpdateattRF(int attIndex) override;
@@ -174,7 +172,6 @@ public:
 
     rf_mode PrepareLo(uint64_t freq) override
     { return HFMODE;}
-    void Initialize(uint32_t samplefreq) override {}
     bool UpdatemodeRF(rf_mode mode) override { return true; }
     bool UpdateattRF(int attIndex) override { return true; }
     uint64_t TuneLo(uint64_t freq) override {
