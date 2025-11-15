@@ -1,34 +1,41 @@
+#include <cstdint>
+#include <map>
+
 #include "SoapySDDC.hpp"
 #include <SoapySDR/Registry.hpp>
-#include <cstdint>
-
-DevContext devicelist; // list of FX3 devices
 
 SoapySDR::KwargsList findSDDC(const SoapySDR::Kwargs &args)
 {
-    DbgPrintf("soapySDDC::findSDDC\n");
-
     std::vector<SoapySDR::Kwargs> results;
 
-    unsigned char idx = 0;
-    fx3class *Fx3(CreateUsbHandler());
-    
-    while(Fx3->Enumerate(idx, devicelist.dev[idx]))
-    {
-        SoapySDR::Kwargs devInfo;
+    const size_t this_count = sddc_get_device_count();
 
-        devInfo["label"] = std::string("SDDC") + " :: " + devicelist.dev[idx];
+    for (size_t i = 0; i < this_count; i++)
+    {
+        char manufact[256], product[256], serial[256];
+
+        if (sddc_get_device_usb_strings(i, manufact, product, serial) != 0)
+        {
+            continue;
+        }
+
+        //filtering by serial
+        if (args.count("serial") != 0 and args.at("serial") != serial) continue;
+
+        SoapySDR::Kwargs devInfo;
+        devInfo["label"] = std::string(sddc_get_device_name(i)) + " :: " + serial;
+        devInfo["product"] = product;
+        devInfo["serial"] = serial;
+        devInfo["manufacturer"] = manufact;
+
         results.push_back(devInfo);
-        idx++;
     }
 
-    delete Fx3;
     return results;
 }
 
 SoapySDR::Device *makeSDDC(const SoapySDR::Kwargs &args)
 {
-    DbgPrintf("soapySDDC::makeSDDC\n");
     return new SoapySDDC(args);
 }
 

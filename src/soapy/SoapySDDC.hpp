@@ -1,18 +1,18 @@
 #pragma once
-#include "../core/config.h"
-#include <SoapySDR/Device.hpp>
-#include <SoapySDR/Types.h>
+
 #include <atomic>
 #include <cstddef>
 #include <sys/types.h>
-#include "FX3Class.h"
-#include "RadioHandler.h"
 
-struct DevContext
-{
-    unsigned char numdev;
-    char dev[MAXNDEV][MAXDEVSTRLEN];
-};
+#include <mutex>
+#include <condition_variable>
+
+#include <SoapySDR/Device.hpp>
+#include <SoapySDR/Types.h>
+
+#include "sddc.h"
+
+#define DbgPrintf(x, ...)
 
 class SoapySDDC : public SoapySDR::Device
 {
@@ -134,8 +134,7 @@ private:
     size_t numBuffers, bufferLength, asyncBuffs;
     std::atomic<long long> ticks;
 
-    fx3class *Fx3;
-    RadioHandlerClass RadioHandler;
+    sddc_dev_t *sddc;
 
 public:
     int Callback(void *context, const float *data, uint32_t len);

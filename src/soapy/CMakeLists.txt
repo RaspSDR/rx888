@@ -18,7 +18,7 @@ else (MSVC)
 endif (MSVC)
 
 if (SoapySDR_FOUND)
-    include_directories("." "../core")
+    include_directories("." "../libsddc")
 
     SOAPY_SDR_MODULE_UTIL(
         TARGET SDDCSupport
@@ -27,14 +27,12 @@ if (SoapySDR_FOUND)
         Registration.cpp
         Settings.cpp
         Streaming.cpp
-        LIBRARIES
-        SDDC_CORE
     )
 
-    add_dependencies(SDDCSupport SDDC_CORE)
+    add_dependencies(SDDCSupport sddc)
 
-    target_link_libraries(sddc PRIVATE SDDC_CORE)
-    set_target_properties(sddc PROPERTIES VERSION ${PROJECT_VERSION})
-    set_target_properties(sddc PROPERTIES SOVERSION 1)
+    target_link_libraries(SDDCSupport PUBLIC sddc)
+    set_target_properties(SDDCSupport PROPERTIES VERSION ${PROJECT_VERSION})
+    set_target_properties(SDDCSupport PROPERTIES SOVERSION 1)
 
 endif(SoapySDR_FOUND)

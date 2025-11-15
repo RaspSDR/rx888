@@ -75,8 +75,7 @@ SoapySDR::Stream *SoapySDDC::setupStream(const int direction,
 void SoapySDDC::closeStream(SoapySDR::Stream *stream)
 {
     DbgPrintf("SoapySDDC::closeStream\n");
-    RadioHandler.Stop();
-    // RadioHandler.Close();
+    sddc_cancel_async(this->sddc);
 }
 
 size_t SoapySDDC::getStreamMTU(SoapySDR::Stream *stream) const
