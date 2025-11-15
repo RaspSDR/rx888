@@ -1,9 +1,23 @@
 # SoapySDR Lib
 
-find_package(SoapySDR CONFIG)
+if (MSVC)
+    # Lib path
+    set(POTHOS_DIR "C:/Program Files/PothosSDR")
+    if (EXISTS "${POTHOS_DIR}")
+        set(SoapySDR_FOUND TRUE)
+        list(APPEND CMAKE_MODULE_PATH
+            "${POTHOS_DIR}/cmake"
+        )
+        include(SoapySDRConfig)
+        include(SoapySDRUtil)
+    else ()
+        set(SoapySDR_FOUND FALSE)
+    endif ()
+else (MSVC)
+    find_package(SoapySDR CONFIG)
+endif (MSVC)
 
 if (SoapySDR_FOUND)
-
     include_directories("." "../core")
 
     SOAPY_SDR_MODULE_UTIL(
