@@ -1,5 +1,5 @@
 /*
- * sddc_vhf_stream_test - simple VHF/UHF stream test program for libsddc
+ * sddc_stream_test - simple stream test program for libsddc
  *
  * Copyright (C) 2020 by Franco Venturi
  *
@@ -23,26 +23,24 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <chrono>
 
 #include "sddc.h"
 #include "wavewrite.h"
 
-#if _WIN32
-#include "win_clock.h"
-#endif
+using namespace std::chrono;
 
 static unsigned long long received_samples = 0;
 static unsigned long long total_samples = 0;
 static int num_callbacks;
 static int16_t *sampleData = 0;
 static int runtime = 3000;
-static struct timeval clk_start, clk_end;
+static steady_clock::time_point clk_start, clk_end;
 static int stop_reception = 0;
 
 static inline double clk_diff()
 {
-  return ((double)clk_end.tv_sec + 1.0e-6 * clk_end.tv_usec) -
-         ((double)clk_start.tv_sec + 1.0e-6 * clk_start.tv_usec);
+  return duration<double>(clk_end - clk_start).count();
 }
 
 
@@ -60,7 +58,7 @@ static void count_bytes_callback(unsigned char *buf, uint32_t len, void *ctx)
   }
   else
   {
-    clock_gettime(CLOCK_REALTIME, &clk_end);
+    clk_end = steady_clock::now();
     stop_reception = 1;
     sddc_cancel_async((sddc_dev_t *)ctx);
   }
@@ -68,26 +66,28 @@ static void count_bytes_callback(unsigned char *buf, uint32_t len, void *ctx)
 
 int main(int argc, char **argv)
 {
-  if (argc < 3)
+  if (argc < 2)
   {
-    fprintf(stderr, "usage: %s <sample rate> <vhf frequency> [<runtime_in_ms> [<output_filename>]\n", argv[0]);
+    fprintf(stderr, "usage: %s <sample rate> [<runtime_in_ms> [<output_filename>]\n", argv[0]);
     return -1;
   }
-  const char *outfilename = NULL;
-  uint32_t sample_rate = 0.0;
-  uint64_t vhf_frequency = 100 * 1000 * 1000; /* 100 MHz */
-  int vhf_attenuation = -20;                  /* 20dB attenuation */
-
+  const char *outfilename = 0;
+  uint32_t sample_rate = 0;
   sscanf(argv[1], "%ld", &sample_rate);
-  sscanf(argv[2], "%lld", &vhf_frequency);
+  if (2 < argc)
+    runtime = atoi(argv[2]);
   if (3 < argc)
-    runtime = atoi(argv[3]);
-  if (4 < argc)
-    outfilename = argv[4];
+    outfilename = argv[3];
 
   if (sample_rate <= 0)
   {
-    fprintf(stderr, "ERROR - given samplerate '%f' should be > 0\n", sample_rate);
+    fprintf(stderr, "ERROR - given samplerate '%ld' should be > 0\n", sample_rate);
+    return -1;
+  }
+
+  if (sddc_get_device_count() < 1)
+  {
+    fprintf(stderr, "ERROR - No device is found\n");
     return -1;
   }
 
@@ -107,22 +107,9 @@ int main(int argc, char **argv)
     goto DONE;
   }
 
-  // enable tuner
-  if (sddc_set_direct_sampling(sddc, 0) < 0)
+  if (sddc_set_direct_sampling(sddc, 1) < 0)
   {
     fprintf(stderr, "ERROR - sddc_set_direct_sampling() failed\n");
-    goto DONE;
-  }
-
-  if (sddc_set_center_freq64(sddc, vhf_frequency) < 0)
-  {
-    fprintf(stderr, "ERROR - sddc_set_vhf_frequency() failed\n");
-    goto DONE;
-  }
-
-  if (sddc_set_rf_attenuator(sddc, vhf_attenuation) < 0)
-  {
-    fprintf(stderr, "ERROR - sddc_set_rf_attenuator() failed\n");
     goto DONE;
   }
 
@@ -137,7 +124,7 @@ int main(int argc, char **argv)
 
   /* todo: move this into a thread */
   stop_reception = 0;
-  clock_gettime(CLOCK_REALTIME, &clk_start);
+  clk_start = steady_clock::now();
 
   sddc_read_async(sddc, count_bytes_callback, sddc, 0, 0);
 
@@ -145,7 +132,7 @@ int main(int argc, char **argv)
 
   double dur = clk_diff();
   fprintf(stderr, "received=%llu 16-Bit samples in %d callbacks\n", received_samples, num_callbacks);
-  fprintf(stderr, "run for %f sec\n", dur);
+  fprintf(stderr, "run for %lf sec\n", dur);
   fprintf(stderr, "approx. samplerate is %f kSamples/sec\n", received_samples / (1000.0 * dur));
 
   if (outfilename && sampleData && received_samples)
