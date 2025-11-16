@@ -76,7 +76,9 @@ add_subdirectory(src/core)
 add_subdirectory(src/libsddc)
 add_subdirectory(src/tests)
 
-if (MSVC)
+# Build extio only for 32-bit x86 on MSVC
+if (MSVC AND CMAKE_SIZEOF_VOID_P EQUAL 4)
     add_subdirectory(src/extio)
+else()
+    add_subdirectory(src/soapy)
 endif()
-add_subdirectory(src/soapy)
