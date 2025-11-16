@@ -92,7 +92,8 @@ int SoapySDDC::activateStream(SoapySDR::Stream *stream,
     DbgPrintf("SoapySDDC::activateStream %d\n", samplerateidx);
     resetBuffer = true;
     bufferedElems = 0;
-    RadioHandler.Start(samplerateidx);
+
+    
 
     return 0;
 }
@@ -102,7 +103,8 @@ int SoapySDDC::deactivateStream(SoapySDR::Stream *stream,
                                 const long long timeNs)
 {
     DbgPrintf("SoapySDDC::deactivateStream\n");
-    RadioHandler.Stop();
+
+    sddc_cancel_async(this->sddc);
     return 0;
 }
 

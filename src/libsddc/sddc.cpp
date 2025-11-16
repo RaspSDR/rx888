@@ -169,6 +169,8 @@ int sddc_open(sddc_dev_t **dev, uint32_t index)
     // start the r2iq processor
     ret_val->r2iq = new fft_mt_r2iq();
 
+    sddc_set_direct_sampling(ret_val, 1);
+
     *dev = ret_val;
 
     return 0;
@@ -181,6 +183,7 @@ int sddc_open_raw(sddc_dev_t **dev, uint32_t index)
         return ret;
 
     (*dev)->raw_mode = true;
+
     return ret;
 }
 
@@ -352,6 +355,23 @@ int sddc_get_rf_attenuator(sddc_dev_t *dev, float *value)
     return 0;
 }
 
+ int sddc_get_rf_attenuator_range(sddc_dev_t *dev, float *min, float *max)
+ {
+        if (!dev)
+        return -EINVAL;
+
+    const float *steps;
+    int nstep = dev->hardware->getRFSteps(&steps);
+
+    if (min)
+        *min = steps[0];
+
+    if (max)
+        *max = steps[nstep - 1];
+
+    return 0;
+ }
+
 int sddc_set_if_gain(sddc_dev_t *dev, float value)
 {
     if (!dev)
@@ -387,6 +407,23 @@ int sddc_get_if_gain(sddc_dev_t *dev, float *value)
     return 0;
 }
 
+int sddc_get_if_gain_range(sddc_dev_t *dev, float *min, float *max)
+{
+    if (!dev)
+        return -EINVAL;
+
+    const float *steps;
+    int nstep = dev->hardware->getIFSteps(&steps);
+
+    if (min)
+        *min = steps[0];
+
+    if (max)
+        *max = steps[nstep - 1];
+
+    return 0;
+}
+
 uint32_t sddc_get_sample_rate(sddc_dev_t *dev)
 {
     if (!dev)
@@ -411,6 +448,9 @@ int sddc_set_direct_sampling(sddc_dev_t *dev, int on)
 
     if (dev->status != DEVICE_IDLE)
         return -EPERM;
+
+    // we have different if/rf gain settings for direct sampling mode
+    dev->hardware->UpdatemodeRF(on ? HFMODE : VHFMODE);
 
     dev->direct_sampling = on;
     return 0;
@@ -537,10 +577,10 @@ int sddc_read_async(sddc_dev_t *dev,
             if (dev->fc != 0.0f)
             {
                 std::unique_lock<std::mutex> lk(dev->fc_mutex);
-                shift_limited_unroll_C_sse_inp_c((complexf*)buf, len, &dev->stateFineTune);
+                shift_limited_unroll_C_sse_inp_c((complexf*)buf, (int)len, &dev->stateFineTune);
             }
 
-            cb((unsigned char *)buf, len, ctx);
+            cb((unsigned char *)buf, (uint32_t)len, ctx);
 
             outputbuffer.ReadDone();
         }

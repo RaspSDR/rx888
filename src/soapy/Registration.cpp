@@ -14,7 +14,7 @@ SoapySDR::KwargsList findSDDC(const SoapySDR::Kwargs &args)
     {
         char manufact[256], product[256], serial[256];
 
-        if (sddc_get_device_usb_strings(i, manufact, product, serial) != 0)
+        if (sddc_get_device_usb_strings((uint32_t)i, manufact, product, serial) != 0)
         {
             continue;
         }
@@ -23,7 +23,7 @@ SoapySDR::KwargsList findSDDC(const SoapySDR::Kwargs &args)
         if (args.count("serial") != 0 and args.at("serial") != serial) continue;
 
         SoapySDR::Kwargs devInfo;
-        devInfo["label"] = std::string(sddc_get_device_name(i)) + " :: " + serial;
+        devInfo["label"] = std::string(sddc_get_device_name((uint32_t)i)) + " :: " + serial;
         devInfo["product"] = product;
         devInfo["serial"] = serial;
         devInfo["manufacturer"] = manufact;
