@@ -1,0 +1,766 @@
+use anyhow::{Context, Result};
+use nusb::transfer::{Bulk, ControlIn, ControlOut, ControlType, In, Recipient};
+use nusb::{DeviceInfo, Interface, MaybeFuture, list_devices};
+use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
+use std::thread::{self, JoinHandle};
+use std::time::Duration;
+
+use crate::gain;
+use crate::interface::{self, FX3Command, REG_ADC_ENABLE, RadioModel, Register};
+
+const BUILTIN_FIRMWARE: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../RX888_FW.img"
+));
+
+/// Callback type for async read operations
+/// Receives a slice of received data
+pub type ReadCallback = Arc<dyn Fn(&[i16]) + Send + Sync>;
+
+#[derive(PartialEq)]
+enum DeviceState {
+    Idle,
+    Running,
+}
+
+/// Physical RX888-family SDR device API.
+///
+/// This struct wraps the FX3 USB interface and firmware registers to control
+/// RX888/RX888r2/RX888plus devices. It provides a synchronous control surface
+/// (open, set gains/frequency, query ranges) and an asynchronous streaming API
+/// via `read_async` that delivers raw ADC bytes to a user callback.
+///
+/// Key points:
+/// - Device discovery uses VID/PID and requires SuperSpeed USB.
+/// - Model and firmware version are validated at open; mismatches error out.
+/// - Some parameters (crystal frequency, direct sampling) are only changeable
+///   while idle. Gains and center frequency apply immediately when running.
+/// - Async streaming spawns a background thread that reads bulk USB and invokes
+///   the user callback with contiguous slices. Call `read_cancel` to stop.
+/// - Threading: `read_async` creates one reader thread; cancellation is via
+///   an atomic flag and FX3 register writes.
+pub struct Radio {
+    // readonly fields
+    device_info: DeviceInfo,
+    interface: nusb::Interface,
+    firmware_version: u16,
+    model: RadioModel,
+
+    // static parameters, set before starting
+    // and not changed during operation
+    xtal_freq: u32,
+    direct_sampling: bool,
+
+    // dynamic parameters
+    center_freq: u64,
+    if_gain: f32,
+    rf_gain: f32,
+
+    // state
+    state: DeviceState,
+    adc_flags: u8,
+
+    // async read state
+    cancel_flag: Option<Arc<AtomicBool>>,
+    read_thread: Option<JoinHandle<()>>,
+}
+
+impl Radio {
+    fn read_register(interface: &Interface, reg: Register) -> Result<u32> {
+        let data = interface
+            .control_in(
+                ControlIn {
+                    control_type: ControlType::Vendor,
+                    recipient: Recipient::Device,
+                    request: FX3Command::REGOP as u8,
+                    value: 0,
+                    index: reg as u16,
+                    length: 4,
+                },
+                Duration::from_millis(500),
+            )
+            .wait()?;
+        Ok(u32::from_le_bytes([data[0], data[1], data[2], data[3]]))
+    }
+
+    fn write_register(interface: &Interface, reg: Register, value: u32) -> Result<()> {
+        log::info!("Writing register {:?} with value {}", reg, value);
+        let data = value.to_le_bytes();
+        interface
+            .control_out(
+                ControlOut {
+                    control_type: ControlType::Vendor,
+                    recipient: Recipient::Device,
+                    request: FX3Command::REGOP as u8,
+                    value: 0,
+                    index: reg as u16,
+                    data: &data,
+                },
+                Duration::from_millis(500),
+            )
+            .wait()?;
+        Ok(())
+    }
+
+    pub fn open(index: u32) -> Result<Self> {
+        if let Some(device_info) = Radio::find_device(index) {
+            Radio::new(device_info)
+        } else {
+            anyhow::bail!("Device not found");
+        }
+    }
+
+    pub(crate) fn new(device_info: DeviceInfo) -> Result<Self> {
+        let device = device_info.open().wait().context("Failed to open device")?;
+        let interface = device.claim_interface(0).wait()?;
+
+        // figure out the model
+        match Self::read_register(&interface, Register::REG_INFO_RESET) {
+            Ok(data) => {
+                let data = data.to_le_bytes();
+                let firmware_version = u16::from_be_bytes([data[1], data[2]]);
+                let model = data[0];
+
+                if firmware_version
+                    != ((interface::FIRMWARE_VER_MAJOR as u16) << 8
+                        | (interface::FIRMWARE_VER_MINOR as u16))
+                {
+                    anyhow::bail!(
+                        "Firmware version mismatch: expected {}.{}, got {}.{}",
+                        interface::FIRMWARE_VER_MAJOR,
+                        interface::FIRMWARE_VER_MINOR,
+                        firmware_version >> 8,
+                        firmware_version & 0xFF
+                    );
+                } else {
+                    Ok(Radio {
+                        device_info,
+                        interface,
+                        model: match model {
+                            0x03 => RadioModel::RX888,
+                            0x04 => RadioModel::RX888r2,
+                            0x05 => RadioModel::RX888plus,
+                            _ => RadioModel::NORADIO,
+                        },
+                        firmware_version,
+                        center_freq: 0,
+                        if_gain: 0.0,
+                        rf_gain: 0.0,
+                        direct_sampling: true,
+                        xtal_freq: 62_000_000,
+                        state: DeviceState::Idle,
+                        adc_flags: 0,
+                        cancel_flag: None,
+                        read_thread: None,
+                    })
+                }
+            }
+            Err(error) => {
+                anyhow::bail!("Failed to communicate with device: {}", error);
+            }
+        }
+    }
+
+    /// Return nusb `DeviceInfo` for this radio.
+    pub fn device_info(&self) -> &DeviceInfo {
+        &self.device_info
+    }
+
+    /// Find an RX888-family device by zero-based `index`.
+    ///
+    /// Filters enumerated USB devices by expected VID/PID and SuperSpeed,
+    /// returning the Nth match. Useful when multiple radios are connected.
+    pub fn find_device(index: u32) -> Option<DeviceInfo> {
+        let devices = list_devices().wait().ok()?;
+
+        let mut flashed_devices = 0;
+
+        // try to upload firmware if device found
+        devices
+            .into_iter()
+            .filter(|d| {
+                d.vendor_id() == interface::FIRMWARE_VID
+                    && d.product_id() == interface::BOOTLOADER_PID
+            })
+            .for_each(|device_info| {
+                flashed_devices += 1;
+                if let Ok(device) = device_info.open().wait() {
+                    log::info!("Found bootloader device, attempting to flash firmware...");
+                    if let Err(e) = crate::flash::download_firmware(&device, BUILTIN_FIRMWARE) {
+                        log::error!("Failed to flash device: {}", e);
+                    } else {
+                        log::info!("Firmware flashed successfully.");
+                    }
+                }
+            });
+
+        if flashed_devices > 0 {
+            thread::sleep(Duration::from_millis(500));
+        }
+        let devices = list_devices().wait().ok()?;
+        devices
+            .into_iter()
+            .filter(|d| {
+                d.vendor_id() == interface::FIRMWARE_VID
+                    && d.product_id() == interface::FIRMWARE_PID
+                    && d.speed() == Some(nusb::Speed::Super)
+            })
+            .nth(index as usize)
+    }
+
+    /// Set external crystal frequency used by the ADC clocking logic.
+    /// For the SDR hardware, xtal_freq equals the real sample rate.
+    ///
+    /// Constraints: must be idle; changing while running returns an error.
+    pub fn set_xtal_freq(&mut self, freq: u32) -> Result<()> {
+        if self.state != DeviceState::Idle {
+            anyhow::bail!("Cannot set crystal frequency while device is running");
+        }
+
+        self.xtal_freq = freq;
+
+        Ok(())
+    }
+
+    /// Get configured crystal frequency in Hz.
+    /// For the SDR hardware, this is the real sample rate.
+    pub fn get_xtal_freq(&self) -> u32 {
+        self.xtal_freq
+    }
+
+    /// Enable/disable direct sampling mode.
+    ///
+    /// When `true`, ADC is routed directly (HF bands); when `false`, tuner
+    /// path is used (VHF/UHF). Must be idle to change.
+    pub fn set_direct_sampling(&mut self, mode: bool) -> Result<()> {
+        if self.state != DeviceState::Idle {
+            anyhow::bail!("Cannot set direct sampling while device is running");
+        }
+        self.direct_sampling = mode;
+        Ok(())
+    }
+
+    /// Query direct sampling mode.
+    pub fn get_direct_sampling(&self) -> bool {
+        self.direct_sampling
+    }
+
+    /// Get detected radio model.
+    pub fn get_model(&self) -> crate::interface::RadioModel {
+        self.model
+    }
+
+    /// Return IF gain range (min, max) in dB according to current model/mode.
+    pub fn get_if_gain_range(&self) -> (f32, f32) {
+        crate::gain::get_if_gain_range(self.model, self.direct_sampling)
+    }
+
+    /// Return IF gain steps slice for current model/mode.
+    pub fn get_if_gain_steps(&self) -> &'static [f32] {
+        crate::gain::get_if_gain_steps(self.model, self.direct_sampling)
+    }
+
+    /// Return RF gain range (min, max) in dB according to current model/mode.
+    pub fn get_rf_gain_range(&self) -> (f32, f32) {
+        crate::gain::get_rf_gain_range(self.model, self.direct_sampling)
+    }
+
+    /// Return RF gain steps slice for current model/mode.
+    pub fn get_rf_gain_steps(&self) -> &'static [f32] {
+        crate::gain::get_rf_gain_steps(self.model, self.direct_sampling)
+    }
+
+    /// Set IF gain in dB.
+    ///
+    /// Maps to a hardware-specific gain index depending on model and mode.
+    /// When running, applies immediately via firmware registers; otherwise
+    /// stored and applied on start.
+    pub fn set_if_gain(&mut self, gain: f32) -> Result<()> {
+        self.if_gain = gain;
+
+        if self.state == DeviceState::Running {
+            // figure out the right index for the gain
+            // Map the requested gain (dB) into a hardware index per model/mode
+            let gain_index = gain::if_gain_to_index(self.model, self.direct_sampling, gain);
+
+            // write index to appropriate register so firmware can apply it
+            if self.direct_sampling {
+                Self::write_register(
+                    &self.interface,
+                    Register::REG_DIRECT_IF_GAIN,
+                    gain_index as u32,
+                )?;
+            } else {
+                Self::write_register(
+                    &self.interface,
+                    Register::REG_TUNER_IF_GAIN,
+                    gain_index as u32,
+                )?;
+            }
+
+            let steps = gain::get_if_gain_steps(self.model, self.direct_sampling);
+            if !steps.is_empty() && (gain_index as usize) < steps.len() {
+                self.if_gain = steps[gain_index as usize];
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Get current IF gain in dB.
+    pub fn get_if_gain(&self) -> f32 {
+        self.if_gain
+    }
+
+    /// Set RF gain in dB.
+    ///
+    /// Maps to a hardware-specific index; applies immediately when running.
+    pub fn set_rf_gain(&mut self, gain: f32) -> Result<()> {
+        self.rf_gain = gain;
+
+        if self.state == DeviceState::Running {
+            // Map RF gain and write to firmware register for immediate application
+            let gain_index = gain::rf_gain_to_index(self.model, self.direct_sampling, gain);
+
+            if self.direct_sampling {
+                Self::write_register(
+                    &self.interface,
+                    Register::REG_DIRECT_RF_GAIN,
+                    gain_index as u32,
+                )?;
+            } else {
+                Self::write_register(
+                    &self.interface,
+                    Register::REG_TUNER_RF_GAIN,
+                    gain_index as u32,
+                )?;
+            }
+
+            let rf_steps = gain::get_rf_gain_steps(self.model, self.direct_sampling);
+            if !rf_steps.is_empty() && (gain_index as usize) < rf_steps.len() {
+                self.rf_gain = rf_steps[gain_index as usize];
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Get current RF gain in dB.
+    pub fn get_rf_gain(&self) -> f32 {
+        self.rf_gain
+    }
+
+    /// Set physical radio center frequency in Hz.
+    ///
+    /// When running, writes high/low 32-bit halves to firmware registers for
+    /// immediate retune. Stored otherwise and applied on start.
+    pub fn set_center_freq(&mut self, freq: u64) -> Result<()> {
+        self.center_freq = freq;
+
+        if self.state == DeviceState::Running {
+            Self::write_register(
+                &self.interface,
+                Register::REG_TUNER_CENTER_FREQ_HIGH,
+                (freq >> 32) as u32,
+            )?;
+            Self::write_register(
+                &self.interface,
+                Register::REG_TUNER_CENTER_FREQ_LOW,
+                (freq & 0xFFFFFFFF) as u32,
+            )?;
+        }
+
+        Ok(())
+    }
+
+    /// Get current physical center frequency in Hz.
+    pub fn get_center_freq(&self) -> u64 {
+        self.center_freq
+    }
+
+    /// Get validated firmware version (major<<8 | minor).
+    pub fn get_firmware_version(&self) -> u16 {
+        self.firmware_version
+    }
+
+    /// Start asynchronous streaming from the FX3.
+    ///
+    /// Spawns a reader thread that performs bulk transfers and invokes
+    /// `callback(&[u8])` with raw ADC bytes. If `blocking` is true, the call
+    /// will join the thread (and thus not return) until `read_cancel()` is
+    /// invoked from another thread. Validates SuperSpeed mode prior to start.
+    pub fn read_async<F>(&mut self, callback: F) -> Result<()>
+    where
+        F: Fn(&[i16]) + Send + Sync + 'static,
+    {
+        // Check if already running
+        if self.read_thread.is_some() {
+            anyhow::bail!("Async read already in progress. Call read_cancel() first.");
+        }
+
+        if self.device_info().speed() != Some(nusb::Speed::Super) {
+            anyhow::bail!("Device not in SuperSpeed mode; cannot start async read operation.");
+        }
+
+        self.state = DeviceState::Running;
+
+        Self::write_register(
+            &self.interface,
+            Register::REG_TUNER,
+            if self.direct_sampling { 0 } else { 1 },
+        )?;
+
+        Self::write_register(&self.interface, Register::REG_ADCFREQ, self.xtal_freq)?;
+
+        // since state is set to running, other settings will be applied immediately
+        self.set_center_freq(self.center_freq)?;
+        self.set_if_gain(self.if_gain)?;
+        self.set_rf_gain(self.rf_gain)?;
+
+        Self::write_register(
+            &self.interface,
+            Register::REG_ADC,
+            (self.adc_flags | REG_ADC_ENABLE) as u32,
+        )?;
+
+        // Create shared cancel flag
+        let cancel_flag = Arc::new(AtomicBool::new(false));
+        let cancel_flag_clone = cancel_flag.clone();
+
+        // Wrap callback in Arc
+        let callback = Arc::new(callback);
+
+        // Clone interface for the thread
+        let interface = self.interface.clone();
+
+        // Spawn read thread
+        let thread = thread::spawn(move || {
+            let worker = AsyncReadWorker {
+                interface,
+                cancel_flag: cancel_flag_clone,
+                callback,
+            };
+            worker.start();
+        });
+
+        // Store cancel flag and thread
+        self.cancel_flag = Some(cancel_flag);
+        self.read_thread = Some(thread);
+
+        Ok(())
+    }
+
+    /// Cancel asynchronous streaming started by `read_async`.
+    ///
+    /// Signals the reader thread via an atomic flag, joins it, and clears the
+    /// ADC enable bit to stop FX3 streaming. Safe to call if not running.
+    pub fn read_cancel(&mut self) -> Result<()> {
+        if self.read_thread.is_none() {
+            // Not running
+            return Ok(());
+        }
+
+        if let Some(cancel_flag) = self.cancel_flag.take() {
+            // Signal cancellation
+            cancel_flag.store(true, std::sync::atomic::Ordering::SeqCst);
+
+            // Wait for thread to finish
+            if let Some(thread) = self.read_thread.take() {
+                thread.join().ok();
+            }
+
+            // Stop FX3
+            Self::write_register(&self.interface, Register::REG_ADC, self.adc_flags as u32)?;
+
+            self.state = DeviceState::Idle;
+        }
+
+        Ok(())
+    }
+
+    pub fn enable_adc_dither(&mut self, enable: bool) -> Result<()> {
+        if enable {
+            self.adc_flags |= interface::REG_ADC_DITHER;
+        } else {
+            self.adc_flags &= !interface::REG_ADC_DITHER;
+        }
+
+        if self.state == DeviceState::Running {
+            // Apply immediately
+            Self::write_register(
+                &self.interface,
+                Register::REG_ADC,
+                (self.adc_flags | interface::REG_ADC_ENABLE) as u32,
+            )?;
+        }
+
+        Ok(())
+    }
+
+    pub fn enable_adc_pga(&mut self, enable: bool) -> Result<()> {
+        if enable {
+            self.adc_flags |= interface::REG_ADC_PGA;
+        } else {
+            self.adc_flags &= !interface::REG_ADC_PGA;
+        }
+
+        if self.state == DeviceState::Running {
+            // Apply immediately
+            Self::write_register(
+                &self.interface,
+                Register::REG_ADC,
+                (self.adc_flags | interface::REG_ADC_ENABLE) as u32,
+            )?;
+        }
+
+        Ok(())
+    }
+
+    /// Enable or disable antenna bias voltage
+    /// - `index`: 0 for direct sampling mode, 1 for tuner mode
+    /// - `enable`: true to enable, false to disable
+    ///
+    /// Returns: Result<(), Error>
+    ///
+    /// Note: This setting takes effect immediately.
+    pub fn enable_antenna_bias(&mut self, index: i32, enable: bool) -> Result<()> {
+        let reg = match index {
+            0 => Register::REG_DIRECT_ANT_BIAS,
+            1 => Register::REG_TUNER_ANT_BIAS,
+            _ => anyhow::bail!("Invalid antenna bias index: {}", index),
+        };
+
+        Self::write_register(&self.interface, reg, if enable { 1 } else { 0 })?;
+        Ok(())
+    }
+}
+
+// Implement the abstract SdrDevice trait for the real Radio
+impl crate::device::SdrDevice for Radio {
+    fn set_xtal_freq(&mut self, freq: u32) -> Result<()> {
+        self.set_xtal_freq(freq)
+    }
+
+    fn get_xtal_freq(&self) -> u32 {
+        self.get_xtal_freq()
+    }
+
+    fn set_direct_sampling(&mut self, mode: bool) -> Result<()> {
+        self.set_direct_sampling(mode)
+    }
+
+    fn get_direct_sampling(&self) -> bool {
+        self.get_direct_sampling()
+    }
+
+    fn set_center_freq(&mut self, freq: u64) -> Result<()> {
+        self.set_center_freq(freq)
+    }
+
+    fn get_center_freq(&self) -> u64 {
+        self.get_center_freq()
+    }
+
+    fn set_if_gain(&mut self, gain: f32) -> Result<()> {
+        self.set_if_gain(gain)
+    }
+
+    fn get_if_gain(&self) -> f32 {
+        self.get_if_gain()
+    }
+
+    fn set_rf_gain(&mut self, gain: f32) -> Result<()> {
+        self.set_rf_gain(gain)
+    }
+
+    fn get_rf_gain(&self) -> f32 {
+        self.get_rf_gain()
+    }
+
+    fn get_if_gain_range(&self) -> (f32, f32) {
+        self.get_if_gain_range()
+    }
+
+    fn get_if_gain_steps(&self) -> &'static [f32] {
+        self.get_if_gain_steps()
+    }
+
+    fn get_rf_gain_range(&self) -> (f32, f32) {
+        self.get_rf_gain_range()
+    }
+
+    fn get_rf_gain_steps(&self) -> &'static [f32] {
+        self.get_rf_gain_steps()
+    }
+
+    fn enable_adc_dither(&mut self, enable: bool) -> Result<()> {
+        self.enable_adc_dither(enable)
+    }
+
+    fn enable_adc_pga(&mut self, enable: bool) -> Result<()> {
+        self.enable_adc_pga(enable)
+    }
+
+    fn enable_antenna_bias(&mut self, index: i32, enable: bool) -> Result<()> {
+        self.enable_antenna_bias(index, enable)
+    }
+
+    fn read_async(&mut self, cb: Box<dyn Fn(&[i16]) + Send + Sync + 'static>) -> Result<()> {
+        // Wrap boxed callback into a regular closure accepted by the real radio API
+        self.read_async(move |data: &[i16]| {
+            (cb)(data);
+        })
+    }
+
+    fn read_cancel(&mut self) -> Result<()> {
+        self.read_cancel()
+    }
+
+    fn get_model(&self) -> crate::interface::RadioModel {
+        self.get_model()
+    }
+
+    fn get_firmware_version(&self) -> u16 {
+        self.get_firmware_version()
+    }
+}
+
+struct AsyncReadWorker {
+    interface: Interface,
+    cancel_flag: Arc<AtomicBool>,
+    callback: ReadCallback,
+}
+
+impl Drop for Radio {
+    fn drop(&mut self) {
+        // Cancel any ongoing async read
+        self.read_cancel().ok();
+    }
+}
+
+impl AsyncReadWorker {
+    pub fn start(&self) {
+        let mut endpoint = self.interface.endpoint::<Bulk, In>(0x81).unwrap();
+
+        // Pre-submit buffers for async transfers
+        for _ in 0..32 {
+            // buffer size is 16 (maxburst) * 1024 (SS packet size)
+            let buf = endpoint.allocate(16 * 1024);
+            endpoint.submit(buf);
+        }
+
+        // Main read loop
+        while let Some(transfer) = endpoint.wait_next_complete(Duration::from_millis(100)) {
+            // Check for cancellation
+            if self.cancel_flag.load(std::sync::atomic::Ordering::SeqCst) {
+                break;
+            }
+
+            match transfer.status {
+                Ok(()) => {
+                    // Call user callback with received data
+                    if transfer.actual_len > 0 {
+                        // SAFETY: We ensure the buffer is properly aligned and sized for i16
+                        let len = transfer.actual_len / 2;
+                        let data = unsafe {
+                            std::slice::from_raw_parts(transfer.buffer.as_ptr() as *const i16, len)
+                        };
+                        (self.callback)(data);
+                    }
+
+                    // Re-submit the buffer for further reading
+                    endpoint.submit(transfer.buffer);
+                }
+                Err(e) => {
+                    // Log error - some errors like stalls may be transient
+                    log::warn!("USB transfer error: {}", e);
+
+                    // Don't re-submit on error as it may cause continuous errors
+                    // The buffer is dropped and endpoint may need reset
+                    break;
+                }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serial_test::serial;
+
+    use crate::interface::{FIRMWARE_VER_MAJOR, FIRMWARE_VER_MINOR};
+
+    use super::*;
+
+    #[test]
+    fn test_find_device() {
+        let device = Radio::find_device(10);
+        assert!(device.is_none());
+
+        let device = Radio::find_device(0);
+        assert!(device.is_some());
+
+        let device_info = device.unwrap();
+        assert_eq!(device_info.vendor_id(), interface::FIRMWARE_VID);
+        assert_eq!(device_info.speed(), Some(nusb::Speed::Super));
+    }
+
+    #[test]
+    #[serial]
+    fn test_new_radio() {
+        let device_info = Radio::find_device(0).expect("Device not found");
+        let radio = Radio::new(device_info).expect("Failed to create radio");
+        assert_eq!(radio.device_info().vendor_id(), interface::FIRMWARE_VID);
+        assert!(radio.get_xtal_freq() > 0);
+        assert!(radio.get_direct_sampling());
+        assert_eq!(radio.get_if_gain(), 0.0);
+        assert_eq!(radio.get_rf_gain(), 0.0);
+        assert_eq!(radio.get_center_freq(), 0);
+        assert_eq!(
+            radio.get_firmware_version(),
+            ((FIRMWARE_VER_MAJOR << 8) + FIRMWARE_VER_MINOR) as u16
+        );
+        assert_ne!(radio.model, RadioModel::NORADIO);
+
+        drop(radio);
+    }
+
+    #[test]
+    #[serial]
+    fn test_read_direct() {
+        let period_secs = 3;
+        let device_info = Radio::find_device(0).expect("Device not found");
+        let mut radio = Radio::new(device_info).expect("Failed to create radio");
+
+        let count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let count_clone = count.clone();
+
+        assert!(radio.set_direct_sampling(true).is_ok());
+        assert!(radio.set_xtal_freq(64_000_000).is_ok());
+
+        // Start async read with callback
+        radio
+            .read_async(move |data| {
+                count_clone.fetch_add(data.len(), std::sync::atomic::Ordering::SeqCst);
+            })
+            .expect("Failed to start async read");
+
+        // Let it run for a bit
+        std::thread::sleep(Duration::from_secs(period_secs));
+
+        assert!(radio.set_xtal_freq(128_000_000).is_err());
+
+        // Cancel reading
+        radio.read_cancel().expect("Failed to cancel read");
+        let samplerate = ((count.load(std::sync::atomic::Ordering::SeqCst) as f64
+            / period_secs as f64)
+            / 1_000_000.0)
+            .round() as u64;
+        assert!((60..=64).contains(&samplerate));
+
+        assert!(radio.set_xtal_freq(128_000_000).is_ok());
+
+        drop(radio);
+    }
+}

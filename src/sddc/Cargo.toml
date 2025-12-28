@@ -1,0 +1,34 @@
+[package]
+name = "sddc"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+crate-type = ["cdylib", "lib", "staticlib"]
+
+[build-dependencies]
+cbindgen = "0.29"
+
+[dependencies]
+anyhow.workspace = true
+nusb.workspace = true
+num-complex.workspace = true
+rustfft.workspace = true
+realfft.workspace = true
+wide.workspace = true
+log.workspace = true
+chrono = { workspace = true, optional = true }
+
+[dev-dependencies]
+serial_test = "3"
+parameterized = "2"
+clap.workspace = true
+env_logger = "0.11"
+
+[[example]]
+name = "capture_raw_data"
+required-features = []
+
+[features]
+test-utils = []
+

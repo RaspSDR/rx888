@@ -1,0 +1,20 @@
+[package]
+name = "hermeslite"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+path = "lib.rs"
+
+[[bin]]
+name = "hermeslite"
+path = "main.rs"
+
+[dependencies]
+anyhow.workspace = true
+sddc = { path = "../sddc" }
+num-complex.workspace = true
+clap = { version = "4.5", features = ["derive"] }
+ctrlc = "3.4"
+log = "0.4"
+env_logger = "0.11"
