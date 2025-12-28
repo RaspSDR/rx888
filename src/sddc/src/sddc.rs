@@ -635,7 +635,7 @@ pub extern "C" fn sddc_read_async(
                 let cb = cb.unwrap();
                 let ctx_ptr = ctx_val as *mut c_void;
                 // SAFETY: reinterpret i16 slice as u8 for C callback
-                let ptr = data.as_ptr() as *const i16;
+                let ptr = data.as_ptr();
                 let count = data.len() as u32;
                 cb(ptr, count, ctx_ptr);
             }))

@@ -52,7 +52,7 @@ impl RxVFO {
             r2c,
             c2c,
 
-            adc_time: vec![0.0; 2 * half_fft + half_fft],
+            adc_time: vec![0.0; 1024 * 1024], // large enough buffer to avoid resize
             adc_freq: vec![Complex32::ZERO; half_fft + 1],
             freq_tmp: vec![Complex32::ZERO; half_fft],
             filter: vec![Complex32::ZERO; half_fft],
@@ -62,7 +62,7 @@ impl RxVFO {
             tune_bin: half_fft / 4,
             lsb: false,
 
-            in_sr: in_sr,
+            in_sr,
             out_sr: 32_000_000.0,
 
             fc: 0.0,
@@ -110,18 +110,18 @@ impl RxVFO {
     }
 
     fn generate_freq_filter(&mut self, index: usize) {
-        const Astop: f32 = 120.0;
-        const relPass: f32 = 0.85; // 85% of Nyquist should be usable
-        const relStop: f32 = 1.1; // 'some' alias back into transition band is OK
+        const ASTOP: f32 = 120.0;
+        const REL_PASS: f32 = 0.85; // 85% of Nyquist should be usable
+        const REL_STOP: f32 = 1.1; // 'some' alias back into transition band is OK
 
         let bw = 64.0 / (1 << index) as f32;
 
         let mut ht = vec![0.0f32; self.half_fft / 4 + 1];
         fir::kaiser_window(
             (self.half_fft / 4 + 1) as isize,
-            Astop,
-            relPass * bw / 128.0,
-            relStop * bw / 128.0,
+            ASTOP,
+            REL_PASS * bw / 128.0,
+            REL_STOP * bw / 128.0,
             Some(&mut ht),
         );
 
@@ -144,7 +144,7 @@ impl RxVFO {
         self.out_sr = out_sr;
 
         let decim = (self.in_sr / out_sr).round() as usize;
-        self.decim_idx = decim.next_power_of_two().trailing_zeros() as usize;
+        self.decim_idx = decim.next_power_of_two().trailing_zeros() as usize - 1;
 
         drop(_lock);
         self.generate_freq_filter(self.decim_idx);
@@ -152,8 +152,8 @@ impl RxVFO {
 
     pub fn set_offset(&mut self, freq_offset: f64) {
         let _lock = self.ctrl.lock().unwrap();
-        let original_tubebin = self.tune_bin;
-        if (freq_offset > self.in_sr) {
+        let _original_tubebin = self.tune_bin;
+        if freq_offset > self.in_sr {
             return;
         }
 
@@ -172,9 +172,13 @@ impl RxVFO {
     }
 
     pub fn process(&mut self, input: &[i16], output: &mut Vec<Complex32>) -> usize {
-        let (mfft, hop) = {
+        let (mfft, hop, tune_bin) = {
             let _lock = self.ctrl.lock().unwrap();
-            (self.half_fft >> self.decim_idx, 3 * self.half_fft / 2)
+            (
+                self.half_fft >> self.decim_idx,
+                3 * self.half_fft / 2,
+                self.tune_bin,
+            )
         };
 
         // Convert input → time buffer
@@ -186,7 +190,10 @@ impl RxVFO {
         let mut real_pos = 0;
         let mut produced = 0;
 
-        while real_pos + 2 * self.half_fft <= self.adc_time.len() {
+        let fft_per_buf = input.len() / (3 * self.half_fft / 2) + 1; // number of ffts per buffer with 256|768 overlap
+
+        // while real_pos + 2 * self.half_fft <= self.adc_time.len() {
+        for _i in 0..fft_per_buf {
             // R2C FFT
             self.r2c
                 .process(
@@ -198,16 +205,33 @@ impl RxVFO {
             self.adc_freq[0] = Complex32::ZERO;
 
             // Frequency shift + filter
-            let src = &self.adc_freq[self.tune_bin..self.tune_bin + mfft / 2];
-            let filt = &self.filter[self.half_fft - mfft / 2..];
-            Self::shift_and_filter(&mut self.freq_tmp[..mfft / 2], src, filt);
+            // circular shift tune fs/2 first half array into freq_tmp
+            let shift_count = std::cmp::min(mfft / 2, self.half_fft - tune_bin);
+            let src = &self.adc_freq[tune_bin..tune_bin + shift_count];
+            let filt = &self.filter[..shift_count];
+            Self::shift_and_filter(&mut self.freq_tmp[..shift_count], src, filt);
+
+            // circular shift tune fs/2 second half array
+            let start = std::cmp::max(0, mfft / 2 - tune_bin);
+            let shift_count = mfft / 2 - start;
+            let src = &self.adc_freq[start + tune_bin - mfft / 2..tune_bin];
+            let filt = &self.filter[start + self.half_fft - mfft / 2..self.half_fft];
+            Self::shift_and_filter(
+                &mut self.freq_tmp[mfft / 2 + start..mfft / 2 + start + shift_count],
+                src,
+                filt,
+            );
 
             // IFFT (decimated)
             self.c2c.process(&mut self.freq_tmp[..mfft]);
 
-            // Output overlap-save section
-            let start = mfft / 4;
-            let count = mfft / 2;
+            let (start, count) = if real_pos == 0 {
+                // first part
+                (mfft / 4, mfft / 2)
+            } else {
+                // Output overlap-save section
+                (0, 3 * mfft / 4)
+            };
 
             for i in 0..count {
                 let mut v = self.freq_tmp[start + i];
@@ -285,5 +309,47 @@ mod tests {
             assert!((d.re - e.re).abs() < 1e-5);
             assert!((d.im - e.im).abs() < 1e-5);
         }
+    }
+
+    #[test]
+    fn test_generate_filter() {
+        let mut vfo = RxVFO::new_with_gain(64_000_000.0, 0.0001);
+
+        vfo.set_output_sample_rate(32_000_000.0);
+        assert_eq!(vfo.decim_idx, 0);
+
+        vfo.set_output_sample_rate(16_000_000.0);
+        assert_eq!(vfo.decim_idx, 1);
+
+        vfo.set_output_sample_rate(8_000_000.0);
+        assert_eq!(vfo.decim_idx, 2);
+
+        vfo.set_output_sample_rate(4_000_000.0);
+        assert_eq!(vfo.decim_idx, 3);
+
+        vfo.set_output_sample_rate(2_000_000.0);
+        assert_eq!(vfo.decim_idx, 4);
+
+        let mut vfo = RxVFO::new_with_gain(128_000_000.0, 0.0001);
+        vfo.set_output_sample_rate(32_000_000.0);
+        assert_eq!(vfo.decim_idx, 1);
+    }
+
+    #[test]
+    fn test_output_length() {
+        // we will use 8 * 1024 * 41 samples of int16
+        let input = vec![0i16; 8 * 1024 * 41];
+        // fill random data into input
+
+        let mut output = vec![Complex32::ZERO; 8 * 1024 * 41];
+        let mut vfo = RxVFO::new_with_gain(64_000_000.0, 0.0001);
+        vfo.set_output_sample_rate(16_000_000.0);
+        vfo.set_offset(0.0);
+
+        assert_eq!(vfo.decim_idx, 1);
+
+        assert_eq!(input.len(), 335872);
+        let result = vfo.process(&input, &mut output);
+        assert_eq!(result, 83968)
     }
 }
