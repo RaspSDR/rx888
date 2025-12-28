@@ -30,12 +30,12 @@ fn izero(x: f32) -> f32 {
 ///
 /// Returns the used/estimated number of taps.
 pub fn kaiser_window(
-    num_taps: i32,
+    num_taps: isize,
     astop: f32,
     norm_fpass: f32,
     norm_fstop: f32,
     coef: Option<&mut [f32]>,
-) -> i32 {
+) -> isize {
     let scale: f32 = 1.0; // kept from original
 
     let norm_fcut = (norm_fstop + norm_fpass) / 2.0;
@@ -49,7 +49,7 @@ pub fn kaiser_window(
     };
 
     let mut m_num_taps =
-        ((astop - 8.0) / (2.285_f32 * K_2PI * (norm_fstop - norm_fpass))).trunc() as i32 + 1;
+        ((astop - 8.0) / (2.285_f32 * K_2PI * (norm_fstop - norm_fpass))).trunc() as isize + 1;
 
     if num_taps < 0 && m_num_taps > -num_taps {
         m_num_taps = -num_taps;

@@ -1,6 +1,6 @@
 [workspace]
 members = [
-    "src/sddc"
+    "src/sddc", "src/extio"
 ]
 resolver = "2"
 
@@ -45,6 +45,9 @@ crossbeam = "0.8"
 
 # Dynamic library loading
 libloading = "0.8"
+
+# local project
+sddc = {path = "./src/sddc"}
 
 [profile.release]
 opt-level = 3

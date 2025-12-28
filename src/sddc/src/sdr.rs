@@ -9,10 +9,8 @@ use std::time::Duration;
 use crate::gain;
 use crate::interface::{self, FX3Command, REG_ADC_ENABLE, RadioModel, Register};
 
-const BUILTIN_FIRMWARE: &[u8] = include_bytes!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../RX888_FW.img"
-));
+const BUILTIN_FIRMWARE: &[u8] =
+    include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../RX888_FW.img"));
 
 /// Callback type for async read operations
 /// Receives a slice of received data
@@ -533,96 +531,6 @@ impl Radio {
 
         Self::write_register(&self.interface, reg, if enable { 1 } else { 0 })?;
         Ok(())
-    }
-}
-
-// Implement the abstract SdrDevice trait for the real Radio
-impl crate::device::SdrDevice for Radio {
-    fn set_xtal_freq(&mut self, freq: u32) -> Result<()> {
-        self.set_xtal_freq(freq)
-    }
-
-    fn get_xtal_freq(&self) -> u32 {
-        self.get_xtal_freq()
-    }
-
-    fn set_direct_sampling(&mut self, mode: bool) -> Result<()> {
-        self.set_direct_sampling(mode)
-    }
-
-    fn get_direct_sampling(&self) -> bool {
-        self.get_direct_sampling()
-    }
-
-    fn set_center_freq(&mut self, freq: u64) -> Result<()> {
-        self.set_center_freq(freq)
-    }
-
-    fn get_center_freq(&self) -> u64 {
-        self.get_center_freq()
-    }
-
-    fn set_if_gain(&mut self, gain: f32) -> Result<()> {
-        self.set_if_gain(gain)
-    }
-
-    fn get_if_gain(&self) -> f32 {
-        self.get_if_gain()
-    }
-
-    fn set_rf_gain(&mut self, gain: f32) -> Result<()> {
-        self.set_rf_gain(gain)
-    }
-
-    fn get_rf_gain(&self) -> f32 {
-        self.get_rf_gain()
-    }
-
-    fn get_if_gain_range(&self) -> (f32, f32) {
-        self.get_if_gain_range()
-    }
-
-    fn get_if_gain_steps(&self) -> &'static [f32] {
-        self.get_if_gain_steps()
-    }
-
-    fn get_rf_gain_range(&self) -> (f32, f32) {
-        self.get_rf_gain_range()
-    }
-
-    fn get_rf_gain_steps(&self) -> &'static [f32] {
-        self.get_rf_gain_steps()
-    }
-
-    fn enable_adc_dither(&mut self, enable: bool) -> Result<()> {
-        self.enable_adc_dither(enable)
-    }
-
-    fn enable_adc_pga(&mut self, enable: bool) -> Result<()> {
-        self.enable_adc_pga(enable)
-    }
-
-    fn enable_antenna_bias(&mut self, index: i32, enable: bool) -> Result<()> {
-        self.enable_antenna_bias(index, enable)
-    }
-
-    fn read_async(&mut self, cb: Box<dyn Fn(&[i16]) + Send + Sync + 'static>) -> Result<()> {
-        // Wrap boxed callback into a regular closure accepted by the real radio API
-        self.read_async(move |data: &[i16]| {
-            (cb)(data);
-        })
-    }
-
-    fn read_cancel(&mut self) -> Result<()> {
-        self.read_cancel()
-    }
-
-    fn get_model(&self) -> crate::interface::RadioModel {
-        self.get_model()
-    }
-
-    fn get_firmware_version(&self) -> u16 {
-        self.get_firmware_version()
     }
 }
 

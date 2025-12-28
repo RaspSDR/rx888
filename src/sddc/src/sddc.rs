@@ -3,7 +3,6 @@ use std::ffi::CString;
 use std::os::raw::{c_char, c_int, c_void};
 use std::sync::OnceLock;
 
-use crate::SdrDevice;
 use crate::sdr::Radio;
 
 // Opaque struct for FFI - cbindgen will generate this as an opaque pointer
@@ -15,12 +14,12 @@ pub struct sddc_dev_t {
 
 impl sddc_dev_t {
     // Helper to cast from *mut sddc_dev_t to our internal type
-    unsafe fn as_device_mut<'a>(ptr: *mut sddc_dev_t) -> &'a mut Box<dyn SdrDevice> {
-        unsafe { &mut *(ptr as *mut c_void as *mut Box<dyn SdrDevice>) }
+    unsafe fn as_device_mut<'a>(ptr: *mut sddc_dev_t) -> &'a mut Box<Radio> {
+        unsafe { &mut *(ptr as *mut c_void as *mut Box<Radio>) }
     }
 
-    unsafe fn as_device_ref<'a>(ptr: *const sddc_dev_t) -> &'a dyn SdrDevice {
-        unsafe { &**(ptr as *const c_void as *const Box<dyn SdrDevice>) }
+    unsafe fn as_device_ref<'a>(ptr: *const sddc_dev_t) -> &'a Radio {
+        unsafe { &*(ptr as *const c_void as *const Box<Radio>) }
     }
 }
 
@@ -225,24 +224,12 @@ pub extern "C" fn sddc_open(dev: *mut *mut sddc_dev_t, index: u32) -> c_int {
     if let Some(device) = Radio::find_device(index) {
         match Radio::new(device) {
             Ok(radio) => {
-                let boxed: Box<dyn SdrDevice> = Box::new(radio);
+                let boxed: Box<Radio> = Box::new(radio);
                 unsafe { *dev = Box::into_raw(Box::new(boxed)) as *mut sddc_dev_t };
                 0
             }
             Err(_) => -1,
         }
-    } else if cfg!(test) {
-        // create a mock device for testing
-        let mock_radio = crate::mock_sdr::MockSDR::new(
-            64_000_000,
-            crate::mock_sdr::SignalPattern::Sine {
-                freq_hz: 14_070_000.0,
-            },
-            0.5,
-        );
-        let boxed: Box<dyn SdrDevice> = Box::new(mock_radio);
-        unsafe { *dev = Box::into_raw(Box::new(boxed)) as *mut sddc_dev_t };
-        0
     } else {
         -1
     }
@@ -260,7 +247,7 @@ pub extern "C" fn sddc_close(dev: *mut sddc_dev_t) -> c_int {
         return -1;
     }
     unsafe {
-        let boxed = Box::from_raw(dev as *mut c_void as *mut Box<dyn SdrDevice>);
+        let boxed = Box::from_raw(dev as *mut c_void as *mut Box<Radio>);
         drop(boxed);
     }
     0
@@ -312,7 +299,7 @@ pub extern "C" fn sddc_get_usb_strings(
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[unsafe(no_mangle)]
 pub extern "C" fn sddc_set_xtal_freq(dev: *mut sddc_dev_t, rtl_freq: u32) -> c_int {
-    with_device!(dev, |device: &mut dyn SdrDevice| {
+    with_device!(dev, |device: &mut Radio| {
         if device.set_xtal_freq(rtl_freq).is_ok() {
             0
         } else {
@@ -333,7 +320,7 @@ pub extern "C" fn sddc_get_xtal_freq(dev: *mut sddc_dev_t, rtl_freq: *mut u32) -
     if rtl_freq.is_null() {
         return -1;
     }
-    with_device_ref!(dev, |device: &dyn SdrDevice| {
+    with_device_ref!(dev, |device: &Radio| {
         *rtl_freq = device.get_xtal_freq();
         0
     })
@@ -348,7 +335,7 @@ pub extern "C" fn sddc_get_xtal_freq(dev: *mut sddc_dev_t, rtl_freq: *mut u32) -
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[unsafe(no_mangle)]
 pub extern "C" fn sddc_set_if_gain(dev: *mut sddc_dev_t, value: f32) -> c_int {
-    with_device!(dev, |device: &mut dyn SdrDevice| {
+    with_device!(dev, |device: &mut Radio| {
         if device.set_if_gain(value).is_ok() {
             0
         } else {
@@ -366,7 +353,7 @@ pub extern "C" fn sddc_set_if_gain(dev: *mut sddc_dev_t, value: f32) -> c_int {
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[unsafe(no_mangle)]
 pub extern "C" fn sddc_set_rf_gain(dev: *mut sddc_dev_t, value: f32) -> c_int {
-    with_device!(dev, |device: &mut dyn SdrDevice| {
+    with_device!(dev, |device: &mut Radio| {
         if device.set_rf_gain(value).is_ok() {
             0
         } else {
@@ -387,7 +374,7 @@ pub extern "C" fn sddc_get_if_gain(dev: *mut sddc_dev_t, value: *mut f32) -> c_i
     if value.is_null() {
         return -1;
     }
-    with_device_ref!(dev, |device: &dyn SdrDevice| {
+    with_device_ref!(dev, |device: &Radio| {
         *value = device.get_if_gain();
         0
     })
@@ -410,7 +397,7 @@ pub extern "C" fn sddc_get_if_gain_range(
     if min.is_null() || max.is_null() {
         return -1;
     }
-    with_device_ref!(_dev, |device: &dyn SdrDevice| {
+    with_device_ref!(_dev, |device: &Radio| {
         let (mn, mx) = device.get_if_gain_range();
         *min = mn;
         *max = mx;
@@ -430,7 +417,7 @@ pub extern "C" fn sddc_get_if_gain_steps(_dev: *mut sddc_dev_t, steps: *mut *con
     if steps.is_null() {
         return -1;
     }
-    with_device_ref!(_dev, |device: &dyn SdrDevice| {
+    with_device_ref!(_dev, |device: &Radio| {
         let slice = device.get_if_gain_steps();
         *steps = slice.as_ptr();
         slice.len() as c_int
@@ -449,7 +436,7 @@ pub extern "C" fn sddc_get_rf_gain(dev: *mut sddc_dev_t, value: *mut f32) -> c_i
     if value.is_null() {
         return -1;
     }
-    with_device_ref!(dev, |device: &dyn SdrDevice| {
+    with_device_ref!(dev, |device: &Radio| {
         *value = device.get_rf_gain();
         0
     })
@@ -472,7 +459,7 @@ pub extern "C" fn sddc_get_rf_gain_range(
     if min.is_null() || max.is_null() {
         return -1;
     }
-    with_device_ref!(_dev, |device: &dyn SdrDevice| {
+    with_device_ref!(_dev, |device: &Radio| {
         let (mn, mx) = device.get_rf_gain_range();
         *min = mn;
         *max = mx;
@@ -492,7 +479,7 @@ pub extern "C" fn sddc_get_rf_gain_steps(_dev: *mut sddc_dev_t, steps: *mut *con
     if steps.is_null() {
         return -1;
     }
-    with_device_ref!(_dev, |device: &dyn SdrDevice| {
+    with_device_ref!(_dev, |device: &Radio| {
         let slice = device.get_rf_gain_steps();
         *steps = slice.as_ptr();
         slice.len() as c_int
@@ -554,7 +541,7 @@ pub extern "C" fn sddc_set_center_freq(dev: *mut sddc_dev_t, freq: u32) -> c_int
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[unsafe(no_mangle)]
 pub extern "C" fn sddc_set_center_freq64(dev: *mut sddc_dev_t, freq: u64) -> c_int {
-    with_device!(dev, |device: &mut dyn SdrDevice| {
+    with_device!(dev, |device: &mut Radio| {
         if device.set_center_freq(freq).is_err() {
             return -1;
         }
@@ -595,7 +582,7 @@ pub extern "C" fn sddc_get_sample_rate(dev: *mut sddc_dev_t) -> u32 {
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[unsafe(no_mangle)]
 pub extern "C" fn sddc_set_direct_sampling(dev: *mut sddc_dev_t, on: c_int) -> c_int {
-    with_device!(dev, |device: &mut dyn SdrDevice| {
+    with_device!(dev, |device: &mut Radio| {
         if device.set_direct_sampling(on != 0).is_err() {
             return -1;
         }
@@ -666,7 +653,7 @@ pub extern "C" fn sddc_read_async(
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[unsafe(no_mangle)]
 pub extern "C" fn sddc_cancel_async(dev: *mut sddc_dev_t) -> c_int {
-    with_device!(dev, |device: &mut dyn SdrDevice| {
+    with_device!(dev, |device: &mut Radio| {
         if device.read_cancel().is_err() {
             return -1;
         }
@@ -683,7 +670,7 @@ pub extern "C" fn sddc_cancel_async(dev: *mut sddc_dev_t) -> c_int {
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[unsafe(no_mangle)]
 pub extern "C" fn sddc_enable_bias_tee(dev: *mut sddc_dev_t, on: c_int) -> c_int {
-    with_device!(dev, |device: &mut dyn SdrDevice| {
+    with_device!(dev, |device: &mut Radio| {
         let result = device.enable_antenna_bias(0, on & 0x01 != 0).is_ok()
             && device.enable_antenna_bias(1, on & 0x02 != 0).is_ok();
 
@@ -700,7 +687,7 @@ pub extern "C" fn sddc_enable_bias_tee(dev: *mut sddc_dev_t, on: c_int) -> c_int
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[unsafe(no_mangle)]
 pub extern "C" fn sddc_enable_adc_dither(dev: *mut sddc_dev_t, on: c_int) -> c_int {
-    with_device!(dev, |device: &mut dyn SdrDevice| {
+    with_device!(dev, |device: &mut Radio| {
         if device.enable_adc_dither(on != 0).is_err() {
             return -1;
         }
@@ -717,7 +704,7 @@ pub extern "C" fn sddc_enable_adc_dither(dev: *mut sddc_dev_t, on: c_int) -> c_i
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[unsafe(no_mangle)]
 pub extern "C" fn sddc_enable_adc_pga(dev: *mut sddc_dev_t, on: c_int) -> c_int {
-    with_device!(dev, |device: &mut dyn SdrDevice| {
+    with_device!(dev, |device: &mut Radio| {
         if device.enable_adc_pga(on != 0).is_err() {
             return -1;
         }
@@ -861,7 +848,7 @@ mod sddc_tests {
     #[test]
     #[serial]
     fn test_get_usb_strings_open_device() {
-       let dev = create_test_device();
+        let dev = create_test_device();
 
         let mut manufact = [0i8; 256];
         let mut product = [0i8; 256];
@@ -882,7 +869,7 @@ mod sddc_tests {
     #[test]
     #[serial]
     fn test_xtal_freq() {
-       let dev = create_test_device();
+        let dev = create_test_device();
 
         // Set crystal frequency
         let ret = sddc_set_xtal_freq(dev, 64_000_000);
@@ -910,7 +897,7 @@ mod sddc_tests {
     #[test]
     #[serial]
     fn test_if_gain() {
-       let dev = create_test_device();
+        let dev = create_test_device();
 
         // Set IF gain
         let ret = sddc_set_if_gain(dev, 10.0);
@@ -938,7 +925,7 @@ mod sddc_tests {
     #[test]
     #[serial]
     fn test_rf_gain() {
-       let dev = create_test_device();
+        let dev = create_test_device();
 
         // Set RF gain
         let ret = sddc_set_rf_gain(dev, 5.0);
@@ -966,7 +953,7 @@ mod sddc_tests {
     #[test]
     #[serial]
     fn test_if_gain_range() {
-       let dev = create_test_device();
+        let dev = create_test_device();
 
         let mut min: f32 = 0.0;
         let mut max: f32 = 0.0;
@@ -996,7 +983,7 @@ mod sddc_tests {
     #[test]
     #[serial]
     fn test_if_gain_steps() {
-       let dev = create_test_device();
+        let dev = create_test_device();
 
         let mut steps: *const f32 = std::ptr::null();
         let ret = sddc_get_if_gain_steps(dev, &mut steps);
@@ -1019,7 +1006,7 @@ mod sddc_tests {
     #[test]
     #[serial]
     fn test_rf_gain_range() {
-       let dev = create_test_device();
+        let dev = create_test_device();
 
         let mut min: f32 = 0.0;
         let mut max: f32 = 0.0;
@@ -1033,7 +1020,7 @@ mod sddc_tests {
     #[test]
     #[serial]
     fn test_rf_gain_steps() {
-       let dev = create_test_device();
+        let dev = create_test_device();
 
         let mut steps: *const f32 = std::ptr::null();
         let ret = sddc_get_rf_gain_steps(dev, &mut steps);
@@ -1049,7 +1036,7 @@ mod sddc_tests {
     #[test]
     #[serial]
     fn test_center_freq() {
-       let dev = create_test_device();
+        let dev = create_test_device();
 
         // Set center frequency
         let ret = sddc_set_center_freq(dev, 14_070_000);
@@ -1065,7 +1052,7 @@ mod sddc_tests {
     #[test]
     #[serial]
     fn test_center_freq64() {
-       let dev = create_test_device();
+        let dev = create_test_device();
 
         // Set center frequency (64-bit)
         let ret = sddc_set_center_freq64(dev, 14_070_000_u64);
@@ -1096,7 +1083,7 @@ mod sddc_tests {
     #[test]
     #[serial]
     fn test_sample_rate() {
-       let dev = create_test_device();
+        let dev = create_test_device();
 
         // Set xtal freq to known value
         sddc_set_xtal_freq(dev, 64_000_000);
@@ -1119,7 +1106,7 @@ mod sddc_tests {
     #[test]
     #[serial]
     fn test_direct_sampling() {
-       let dev = create_test_device();
+        let dev = create_test_device();
 
         // Enable direct sampling
         let ret = sddc_set_direct_sampling(dev, 1);
@@ -1151,7 +1138,7 @@ mod sddc_tests {
     #[test]
     #[serial]
     fn test_cancel_async() {
-       let dev = create_test_device();
+        let dev = create_test_device();
 
         // Cancel should succeed even if not reading
         let ret = sddc_cancel_async(dev);
@@ -1169,7 +1156,7 @@ mod sddc_tests {
     #[test]
     #[serial]
     fn test_bias_tee() {
-       let dev = create_test_device();
+        let dev = create_test_device();
 
         // Test different bias tee modes
         let ret = sddc_enable_bias_tee(dev, 0);
@@ -1196,7 +1183,7 @@ mod sddc_tests {
     #[test]
     #[serial]
     fn test_adc_dither() {
-       let dev = create_test_device();
+        let dev = create_test_device();
 
         let ret = sddc_enable_adc_dither(dev, 1);
         assert_eq!(ret, 0, "Should enable ADC dither");
@@ -1216,7 +1203,7 @@ mod sddc_tests {
     #[test]
     #[serial]
     fn test_adc_pga() {
-       let dev = create_test_device();
+        let dev = create_test_device();
 
         let ret = sddc_enable_adc_pga(dev, 1);
         assert_eq!(ret, 0, "Should enable ADC PGA");
@@ -1236,7 +1223,7 @@ mod sddc_tests {
     #[test]
     #[serial]
     fn test_firmware_version() {
-       let dev = create_test_device();
+        let dev = create_test_device();
 
         let version = sddc_get_firmware_version(dev);
         // Version should be non-zero for a valid device
@@ -1254,7 +1241,7 @@ mod sddc_tests {
     #[test]
     #[serial]
     fn test_read_async_null_callback() {
-       let dev = create_test_device();
+        let dev = create_test_device();
 
         let ret = sddc_read_async(dev, None, std::ptr::null_mut());
         assert_eq!(ret, -1, "Should fail with null callback");

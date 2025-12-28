@@ -804,6 +804,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "sddc-extio"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "cbindgen",
+ "chrono",
+ "log",
+ "num-complex",
+ "realfft",
+ "rustfft",
+ "sddc",
+ "wide",
+]
+
+[[package]]
 name = "serde"
 version = "1.0.228"
 source = "registry+https://github.com/rust-lang/crates.io-index"
