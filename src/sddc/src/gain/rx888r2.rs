@@ -72,9 +72,7 @@ fn hf_if_steps_static() -> &'static [f32] {
 fn hf_if_user_steps_static() -> &'static [f32] {
     let v = HF_IF_USER_CACHE.get_or_init(|| {
         // User-facing gain semantics: positive values mean more gain, so flip sign
-        hf_if_steps_static()
-            .iter().copied()
-            .collect::<Vec<f32>>()
+        hf_if_steps_static().iter().copied().collect::<Vec<f32>>()
     });
     v.as_slice()
 }
