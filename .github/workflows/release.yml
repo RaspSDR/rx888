@@ -1,0 +1,109 @@
+name: Build and Release C ABI Library
+
+on:
+  push:
+    tags:
+      - "v*.*.*"   # trigger on version tags, e.g. v1.2.3
+
+permissions:
+  contents: write
+
+env:
+  LIB_NAME: sddc
+
+jobs:
+  build:
+    name: Build (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # -------- Windows --------
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact_ext: dll
+          - os: windows-latest
+            target: i686-pc-windows-msvc
+            artifact_ext: dll
+
+          # -------- Linux --------
+          - os: ubuntu-20.04
+            target: x86_64-unknown-linux-gnu
+            artifact_ext: so
+
+          # -------- macOS --------
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            artifact_ext: dylib
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            artifact_ext: dylib
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Build
+        run: |
+          cargo build --release --target ${{ matrix.target }} --features cbinding
+
+      - name: Prepare package
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          PKG="${LIB_NAME}-${VERSION}-${{ matrix.target }}"
+          mkdir -p "$PKG/lib" "$PKG/include"
+
+          # copy library
+          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+            cp "target/${{ matrix.target }}/release/${LIB_NAME}.dll" "$PKG/lib/"
+            cp "target/${{ matrix.target }}/release/${LIB_NAME}.lib" "$PKG/lib/" || true
+          elif [[ "${{ matrix.os }}" == "macos-latest" ]]; then
+            cp "target/${{ matrix.target }}/release/lib${LIB_NAME}.dylib" "$PKG/lib/"
+          else
+            cp "target/${{ matrix.target }}/release/lib${LIB_NAME}.so" "$PKG/lib/"
+          fi
+
+          # copy headers
+          cp -r include/* "$PKG/include/"
+
+          # docs
+          cp LICENSE README.md "$PKG/" || true
+
+          # archive
+          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+            7z a "$PKG.zip" "$PKG"
+            echo "ASSET=$PKG.zip" >> $GITHUB_ENV
+          else
+            tar czf "$PKG.tar.gz" "$PKG"
+            echo "ASSET=$PKG.tar.gz" >> $GITHUB_ENV
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ASSET }}
+          path: ${{ env.ASSET }}
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            **/*.zip
+            **/*.tar.gz
