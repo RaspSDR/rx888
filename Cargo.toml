@@ -1,6 +1,6 @@
 [workspace]
 members = [
-    "src/sddc", "src/extio"
+    "src/sddc"
 ]
 resolver = "2"
 

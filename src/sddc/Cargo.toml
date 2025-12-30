@@ -18,15 +18,19 @@ realfft.workspace = true
 wide.workspace = true
 log.workspace = true
 chrono = { workspace = true, optional = true }
+clap.workspace = true
 
 [dev-dependencies]
 serial_test = "3"
 parameterized = "2"
-clap.workspace = true
 env_logger = "0.11"
 
-[[example]]
+[[bin]]
 name = "capture_raw_data"
+required-features = []
+
+[[bin]]
+name = "usb_throughput_test"
 required-features = []
 
 [features]
