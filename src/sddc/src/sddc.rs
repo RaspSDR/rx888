@@ -9,9 +9,8 @@ use crate::sdr::Radio;
 #[repr(C)]
 #[allow(non_camel_case_types)]
 pub struct sddc_dev_t {
-    _private: [u8; 0],
+    _private: core::marker::PhantomData<()>,
 }
-
 impl sddc_dev_t {
     // Helper to cast from *mut sddc_dev_t to our internal type
     unsafe fn as_device_mut<'a>(ptr: *mut sddc_dev_t) -> &'a mut Box<Radio> {
@@ -50,7 +49,7 @@ macro_rules! with_device_ref {
 }
 
 #[allow(non_camel_case_types)]
-type sddc_read_async_cb_t = Option<extern "C" fn(buf: *const i16, count: u32, ctx: *mut c_void)>;
+pub type sddc_read_async_cb_t = Option<extern "C" fn(buf: *const i16, count: u32, ctx: *mut c_void)>;
 
 unsafe fn write_empty_cstr(buf: *mut c_char) {
     if !buf.is_null() {

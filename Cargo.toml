@@ -16,21 +16,6 @@ tokio = { version = "1.48.0", features = ["macros", "rt-multi-thread"] }
 chrono = "0.4"
 clap = { version = "4.5", features = ["derive"] }
 
-# Serialization
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-
-# UI Framework
-iced = { version = "0.13", features = ["tokio", "advanced", "canvas", "image"] }
-iced_core = "0.13"
-iced_runtime = "0.13"
-
-# DSP - minimal for now, we'll add more as needed
-rustfft = "6.2"
-num-complex = "0.4"
-realfft = "3.5"
-wide = "0.7"
-
 # Logging
 log = "0.4"
 env_logger = "0.11"
@@ -41,15 +26,11 @@ thiserror = "1.0"
 
 # Utilities
 parking_lot = "0.12"
-crossbeam = "0.8"
-
-# Dynamic library loading
-libloading = "0.8"
-
-# local project
-sddc = {path = "./src/sddc"}
 
 [profile.release]
+lto=true
 opt-level = 3
 strip = true
 debug = true
+panic = "abort"
+codegen-units = 1

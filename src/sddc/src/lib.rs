@@ -1,7 +1,9 @@
 mod flash;
 mod gain;
 mod interface;
-mod sddc;
 mod sdr;
 
 pub use sdr::Radio;
+
+#[cfg(feature = "cbinding")]
+mod sddc;

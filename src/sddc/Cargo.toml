@@ -12,13 +12,10 @@ cbindgen = "0.29"
 [dependencies]
 anyhow.workspace = true
 nusb.workspace = true
-num-complex.workspace = true
-rustfft.workspace = true
-realfft.workspace = true
-wide.workspace = true
 log.workspace = true
 chrono = { workspace = true, optional = true }
 clap.workspace = true
+cbindgen = "0.29"
 
 [dev-dependencies]
 serial_test = "3"
@@ -34,5 +31,5 @@ name = "usb_throughput_test"
 required-features = []
 
 [features]
-test-utils = []
-
+default=[]
+cbinding=[]
