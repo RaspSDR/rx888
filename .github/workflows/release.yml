@@ -27,7 +27,7 @@ jobs:
             target: i686-pc-windows-msvc
 
           # -------- Linux --------
-          - os: ubuntu-lastest
+          - os: ubuntu-24.04
             target: x86_64-unknown-linux-gnu
           - os: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
