@@ -10,7 +10,7 @@ use crate::gain;
 use crate::interface::{self, FX3Command, REG_ADC_ENABLE, RadioModel, Register};
 
 const BUILTIN_FIRMWARE: &[u8] =
-    include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../RX888_FW.img"));
+    include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/firmware/RX888_FW.img"));
 
 /// Callback type for async read operations
 /// Receives a slice of received data
