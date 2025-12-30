@@ -61,11 +61,15 @@ jobs:
           case "${{ matrix.target }}" in
             *windows*)
               test -f "target/${{ matrix.target }}/release/${LIB_NAME}.dll"
+              test -f "target/${{ matrix.target }}/release/${LIB_NAME}.dll.lib"
+              test -f "target/${{ matrix.target }}/release/${LIB_NAME}.lib"
               ;;
             *apple*)
               test -f "target/${{ matrix.target }}/release/lib${LIB_NAME}.dylib"
+              test -f "target/${{ matrix.target }}/release/lib${LIB_NAME}.a"
               ;;
             *)
               test -f "target/${{ matrix.target }}/release/lib${LIB_NAME}.so"
+              test -f "target/${{ matrix.target }}/release/lib${LIB_NAME}.a"
               ;;
           esac

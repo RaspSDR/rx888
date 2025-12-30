@@ -61,18 +61,21 @@ jobs:
           # copy library
           if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
             cp "target/${{ matrix.target }}/release/${LIB_NAME}.dll" "$PKG/lib/"
-            cp "target/${{ matrix.target }}/release/${LIB_NAME}.lib" "$PKG/lib/" || true
+            cp "target/${{ matrix.target }}/release/${LIB_NAME}.dll.lib" "$PKG/lib/"
+            cp "target/${{ matrix.target }}/release/${LIB_NAME}.lib" "$PKG/lib/"
           elif [[ "${{ matrix.os }}" == "macos-latest" ]]; then
             cp "target/${{ matrix.target }}/release/lib${LIB_NAME}.dylib" "$PKG/lib/"
+            cp "target/${{ matrix.target }}/release/lib${LIB_NAME}.a" "$PKG/lib/"
           else
             cp "target/${{ matrix.target }}/release/lib${LIB_NAME}.so" "$PKG/lib/"
+            cp "target/${{ matrix.target }}/release/lib${LIB_NAME}.a" "$PKG/lib/"
           fi
 
           # copy headers
           cp -r include/* "$PKG/include/"
 
           # docs
-          cp LICENSE README.md "$PKG/" || true
+          cp README.md "$PKG/"
 
           # archive
           if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
