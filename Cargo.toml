@@ -1,16 +1,16 @@
-[workspace]
-members = [
-    "src/sddc"
-]
-resolver = "2"
-
-[workspace.package]
+[package]
+name = "sddc"
 version = "0.1.0"
 edition = "2024"
 authors = ["SDDC Lab"]
 license = "LGPL-2.1-or-later"
+homepage="http://www.rx-888.com"
+description="A native Rust driver for the rx-888 family of software-defined radios (SDR)."
 
-[workspace.dependencies]
+[lib]
+crate-type = ["cdylib", "lib", "staticlib"]
+
+[dependencies]
 nusb = { version = "0.2.1"}
 tokio = { version = "1.48.0", features = ["macros", "rt-multi-thread"] }
 chrono = "0.4"
@@ -25,7 +25,27 @@ anyhow = "1.0"
 thiserror = "1.0"
 
 # Utilities
-parking_lot = "0.12"
+cbindgen = "0.29"
+
+[build-dependencies]
+cbindgen = "0.29"
+
+[dev-dependencies]
+serial_test = "3"
+parameterized = "2"
+env_logger = "0.11"
+
+[[bin]]
+name = "capture_raw_data"
+required-features = []
+
+[[bin]]
+name = "usb_throughput_test"
+required-features = []
+
+[features]
+default=[]
+cbinding=[]
 
 [profile.release]
 lto=true
