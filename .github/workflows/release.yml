@@ -32,6 +32,9 @@ jobs:
           - os: ubuntu-20.04
             target: x86_64-unknown-linux-gnu
             artifact_ext: so
+          - os: ubuntu-20.04
+            target: aarch64-unknown-linux-gnu
+            artifact_ext: so
 
           # -------- macOS --------
           - os: macos-latest
