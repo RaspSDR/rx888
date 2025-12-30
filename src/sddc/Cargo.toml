@@ -5,6 +5,7 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 homepage="http://www.rx-888.com"
+description="A native Rust driver for the rx-888 family of software-defined radios (SDR)."
 
 [lib]
 crate-type = ["cdylib", "lib", "staticlib"]
