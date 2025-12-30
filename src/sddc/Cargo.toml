@@ -2,6 +2,9 @@
 name = "sddc"
 version.workspace = true
 edition.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage="http://www.rx-888.com"
 
 [lib]
 crate-type = ["cdylib", "lib", "staticlib"]
