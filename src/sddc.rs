@@ -763,7 +763,6 @@ pub extern "C" fn sddc_enable_hf_highz(dev: *mut sddc_dev_t, on: c_int) -> c_int
     })
 }
 
-
 #[cfg(test)]
 mod sddc_tests {
     use serial_test::serial;
