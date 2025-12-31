@@ -113,10 +113,7 @@ pub fn download_firmware_spi(device: &Device, firmware: &[u8]) -> Result<()> {
     let image_size_in_pages = firmware.len().div_ceil(SPI_FLASH_PAGE_SIZE_IN_BYTE);
     let total_bytes_to_write = image_size_in_pages * SPI_FLASH_PAGE_SIZE_IN_BYTE;
 
-    let mut sector_num = firmware.len() / SPI_FLASH_SECTOR_SIZE_IN_BYTE;
-    if !firmware.len().is_multiple_of(SPI_FLASH_SECTOR_SIZE_IN_BYTE) {
-        sector_num += 1;
-    }
+    let sector_num = firmware.len().div_ceil(SPI_FLASH_SECTOR_SIZE_IN_BYTE);
 
     /* Erase the sectors */
     for i in 0..sector_num {
