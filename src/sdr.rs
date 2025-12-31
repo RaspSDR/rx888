@@ -530,7 +530,7 @@ impl Radio {
         if enable {
             self.adc_flags |= interface::REG_ADC_RANDO;
         } else {
-            self.adc_flags &= !interface::REG_ADC_PGA;
+            self.adc_flags &= !interface::REG_ADC_RANDO;
         }
 
         Ok(())
@@ -551,6 +551,25 @@ impl Radio {
         };
 
         Self::write_register(&self.interface, reg, if enable { 1 } else { 0 })?;
+        Ok(())
+    }
+
+    pub fn enable_hf_highz(&mut self, enable: bool) -> Result<()> {
+        if enable {
+            self.adc_flags |= interface::REG_HF_HIGHZ;
+        } else {
+            self.adc_flags &= !interface::REG_HF_HIGHZ;
+        }
+
+        if self.state == DeviceState::Running {
+            // Apply immediately
+            Self::write_register(
+                &self.interface,
+                Register::REG_ADC,
+                (self.adc_flags | interface::REG_ADC_ENABLE) as u32,
+            )?;
+        }
+
         Ok(())
     }
 }

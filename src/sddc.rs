@@ -746,6 +746,24 @@ pub extern "C" fn sddc_get_firmware_version(dev: *mut sddc_dev_t) -> u16 {
     }
 }
 
+/// Enable or disable ADC RANDO, only enable this before start reading
+///
+/// - `dev`: device handle
+/// - `on`: 0 = off, 1 = on
+///
+/// Returns: -1 if device is not initialized or the device is busy, 0 otherwise.
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+#[unsafe(no_mangle)]
+pub extern "C" fn sddc_enable_hf_highz(dev: *mut sddc_dev_t, on: c_int) -> c_int {
+    with_device!(dev, |device: &mut Radio| {
+        if device.enable_hf_highz(on != 0).is_err() {
+            return -1;
+        }
+        0
+    })
+}
+
+
 #[cfg(test)]
 mod sddc_tests {
     use serial_test::serial;
