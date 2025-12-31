@@ -124,7 +124,7 @@ pub fn download_firmware_spi(device: &Device, firmware: &[u8]) -> Result<()> {
     let mut fw_pointer = 0;
     let mut spi_address = 0u32;
 
-    let mut chunk = vec![0u8; SPI_FLASH_PAGE_SIZE_IN_BYTE];
+    let mut chunk = vec![0u8; CHUNK_SIZE];
     while bytes_left_to_write > 0 {
         let bytes_to_write = std::cmp::min(bytes_left_to_write, CHUNK_SIZE);
         chunk[..bytes_to_write].copy_from_slice(&firmware[fw_pointer..fw_pointer + bytes_to_write]);
