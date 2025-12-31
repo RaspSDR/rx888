@@ -4,13 +4,16 @@ use nusb::{Device, MaybeFuture};
 use std::{num::Wrapping, time::Duration};
 
 const RW_RAM: u8 = 0xA0;
-// const RW_SPI: u8 = 0xC2;
-// const ERASE_SPI: u8 = 0xC4;
+const RW_SPI: u8 = 0xC2;
+const ERASE_SPI: u8 = 0xC4;
 
 const FIRMWARE_HEADER_SIZE: usize = 4;
 const CHUNK_SIZE: usize = 4096;
 const WORD_SIZE: usize = 4;
 const CONTROL_TIMEOUT: Duration = Duration::from_secs(1);
+
+const SPI_FLASH_PAGE_SIZE_IN_BYTE: usize = 256;
+const SPI_FLASH_SECTOR_SIZE_IN_BYTE: usize = 64 * 1024;
 
 /// Validates the firmware file header
 fn validate_firmware_header(firmware: &[u8]) -> Result<()> {
@@ -100,6 +103,73 @@ pub fn download_firmware(device: &Device, firmware: &[u8]) -> Result<()> {
     run_program(&interface, jump_address)?;
 
     Ok(())
+}
+
+pub fn download_firmware_spi(device: &Device, firmware: &[u8]) -> Result<()>
+{
+    validate_firmware_header(firmware)?;
+
+    let interface = device.claim_interface(0).wait()?;
+
+    let image_size_in_pages = (firmware.len() + SPI_FLASH_PAGE_SIZE_IN_BYTE - 1) / SPI_FLASH_PAGE_SIZE_IN_BYTE;
+    let total_bytes_to_write = image_size_in_pages * SPI_FLASH_PAGE_SIZE_IN_BYTE;
+
+    let mut sector_num = firmware.len() / SPI_FLASH_SECTOR_SIZE_IN_BYTE;
+    if (firmware.len() % SPI_FLASH_SECTOR_SIZE_IN_BYTE) != 0 {
+        sector_num+=1;
+    }
+
+    /* Erase the sectors */
+    for i in 0..sector_num {
+        erase_spi_sector(&interface, i as u32)?;
+    }
+
+    let mut bytes_left_to_write = total_bytes_to_write;
+    let mut fw_pointer = 0;
+    let mut spi_address = 0u32;
+
+    let mut chunk = vec![0u8; SPI_FLASH_PAGE_SIZE_IN_BYTE];
+    while bytes_left_to_write > 0 {
+        let bytes_to_write = std::cmp::min(bytes_left_to_write, CHUNK_SIZE);
+        chunk[..bytes_to_write].copy_from_slice(&firmware[fw_pointer..fw_pointer + bytes_to_write]);
+
+        write_spi_page(&interface, spi_address, &chunk)?;
+
+        bytes_left_to_write -= bytes_to_write;
+        fw_pointer += bytes_to_write;
+        spi_address += bytes_to_write as u32;
+    }
+
+    Ok(())
+}
+
+fn erase_spi_sector(interface: &nusb::Interface, sector_number: u32) -> Result<()>
+{
+    let address = 1 + (sector_number << 16);
+    interface.
+        control_out(
+            ControlOut {
+                control_type: ControlType::Vendor,
+                recipient: Recipient::Device,
+                request: ERASE_SPI,
+                value: (address & 0xFFFF) as u16,
+                index: (address >> 16) as u16,
+                data: &[],
+            }, CONTROL_TIMEOUT).wait().context("Erase SPI flash failed")
+}
+
+fn write_spi_page(interface: &nusb::Interface, address: u32, data: &[u8]) -> Result<()>
+{
+    interface.
+        control_out(
+            ControlOut {
+                control_type: ControlType::Vendor,
+                recipient: Recipient::Device,
+                request: RW_SPI,
+                value: (address & 0xFFFF) as u16,
+                index: (address >> 16) as u16,
+                data,
+            }, CONTROL_TIMEOUT).wait().context("Write SPI flash failed")
 }
 
 /// Executes firmware by jumping to the specified address
