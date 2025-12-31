@@ -105,6 +105,26 @@ pub fn download_firmware(device: &Device, firmware: &[u8]) -> Result<()> {
     Ok(())
 }
 
+/// Downloads firmware to the FX3 device's SPI flash memory.
+///
+/// Unlike [`download_firmware`], which loads the image into the device's RAM
+/// for immediate but non-persistent execution, this function erases and
+/// programs the attached SPI flash so that the device can subsequently boot
+/// the firmware directly from flash.
+///
+/// # Parameters
+///
+/// - `device`: The USB device handle representing the FX3 device to program.
+/// - `firmware`: The complete firmware image, including header, in the same
+///   format as accepted by [`download_firmware`]. The header is validated
+///   before any erase/program operations are performed.
+///
+/// # Returns
+///
+/// Returns `Ok(())` if the firmware header is valid and all required SPI
+/// flash sectors are successfully erased and programmed. Returns an error if
+/// validation fails, the USB transfers fail, or any erase/program step does
+/// not complete successfully.
 pub fn download_firmware_spi(device: &Device, firmware: &[u8]) -> Result<()> {
     validate_firmware_header(firmware)?;
 
