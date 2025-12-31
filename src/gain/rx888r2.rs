@@ -1,3 +1,6 @@
+// Mapping logic for the original RX888 mk2 Model.
+
+use crate::gain::find_closest_index;
 use std::f32;
 use std::sync::OnceLock;
 
@@ -85,22 +88,6 @@ fn hf_rf_steps_static() -> &'static [f32] {
 fn vhf_if_user_steps_static() -> &'static [f32] {
     let v = VHF_IF_USER_CACHE.get_or_init(|| VHF_IF_STEPS.to_vec());
     v.as_slice()
-}
-
-fn find_closest_index(steps: &[f32], gain_db: f32) -> u16 {
-    if steps.is_empty() {
-        return 0u16;
-    }
-    let mut best = 0usize;
-    let mut best_diff = f32::INFINITY;
-    for (i, &v) in steps.iter().enumerate() {
-        let diff = (v - gain_db).abs();
-        if diff < best_diff {
-            best_diff = diff;
-            best = i;
-        }
-    }
-    best as u16
 }
 
 /// `direct_sampling` is true when device is in direct sampling mode.

@@ -1,5 +1,6 @@
 // Mapping logic for the original RX888 / BBRF103 model.
 
+use crate::gain::find_closest_index;
 use std::sync::OnceLock;
 
 const VHF_IF_STEPS: [f32; 16] = [
@@ -16,22 +17,6 @@ fn vhf_if_user_steps_static() -> &'static [f32] {
         VHF_IF_STEPS.iter().map(|g| -*g).collect()
     });
     v.as_slice()
-}
-
-fn find_closest_index(steps: &[f32], gain_db: f32) -> u16 {
-    if steps.is_empty() {
-        return 0u16;
-    }
-    let mut best = 0usize;
-    let mut best_diff = f32::INFINITY;
-    for (i, &v) in steps.iter().enumerate() {
-        let diff = (v - gain_db).abs();
-        if diff < best_diff {
-            best_diff = diff;
-            best = i;
-        }
-    }
-    best as u16
 }
 
 /// `direct_sampling` true means direct sample mode; VHF mode is !direct_sampling.
