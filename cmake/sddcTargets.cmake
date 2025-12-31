@@ -70,8 +70,8 @@ set_target_properties(sddc::sddc PROPERTIES
 
 if (WIN32)
     set_target_properties(sddc::sddc PROPERTIES
-        IMPORTED_IMPLIB "${SDDC_ROOT}/lib/sddc.lib"
-        IMPORTED_LOCATION "${SDDC_ROOT}/lib/sddc.dll.lib"
+        IMPORTED_IMPLIB "${SDDC_ROOT}/lib/sddc.dll.lib"
+        IMPORTED_LOCATION "${SDDC_ROOT}/lib/sddc.dll"
     )
     set_target_properties(sddc::sddc_static PROPERTIES
         IMPORTED_LOCATION "${SDDC_ROOT}/lib/sddc.lib"

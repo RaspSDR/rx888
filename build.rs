@@ -10,7 +10,7 @@ fn main() {
     let profile = env::var("PROFILE").unwrap_or_else(|_| "debug".to_string());
 
     if std::env::var_os("CARGO_FEATURE_CBINDING").is_none() {
-        return
+        return;
     }
 
     cbindgen::Builder::new()
