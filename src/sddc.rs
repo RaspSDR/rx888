@@ -49,7 +49,8 @@ macro_rules! with_device_ref {
 }
 
 #[allow(non_camel_case_types)]
-pub type sddc_read_async_cb_t = Option<extern "C" fn(buf: *const i16, count: u32, ctx: *mut c_void)>;
+pub type sddc_read_async_cb_t =
+    Option<extern "C" fn(buf: *const i16, count: u32, ctx: *mut c_void)>;
 
 unsafe fn write_empty_cstr(buf: *mut c_char) {
     if !buf.is_null() {
@@ -705,6 +706,23 @@ pub extern "C" fn sddc_enable_adc_dither(dev: *mut sddc_dev_t, on: c_int) -> c_i
 pub extern "C" fn sddc_enable_adc_pga(dev: *mut sddc_dev_t, on: c_int) -> c_int {
     with_device!(dev, |device: &mut Radio| {
         if device.enable_adc_pga(on != 0).is_err() {
+            return -1;
+        }
+        0
+    })
+}
+
+/// Enable or disable ADC RANDO, only enable this before start reading
+///
+/// - `dev`: device handle
+/// - `on`: 0 = off, 1 = on
+///
+/// Returns: -1 if device is not initialized or the device is busy, 0 otherwise.
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+#[unsafe(no_mangle)]
+pub extern "C" fn sddc_enable_adc_rando(dev: *mut sddc_dev_t, on: c_int) -> c_int {
+    with_device!(dev, |device: &mut Radio| {
+        if device.enable_adc_rando(on != 0).is_err() {
             return -1;
         }
         0

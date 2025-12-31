@@ -6,11 +6,15 @@ use std::sync::atomic::AtomicBool;
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
+use wide::{CmpEq, i16x8};
+
 use crate::gain;
 use crate::interface::{self, FX3Command, REG_ADC_ENABLE, RadioModel, Register};
 
-const BUILTIN_FIRMWARE: &[u8] =
-    include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/firmware/RX888_FW.img"));
+const BUILTIN_FIRMWARE: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/firmware/RX888_FW.img"
+));
 
 /// Callback type for async read operations
 /// Receives a slice of received data
@@ -432,11 +436,14 @@ impl Radio {
         // Clone interface for the thread
         let interface = self.interface.clone();
 
+        let rando_flag = self.adc_flags & interface::REG_ADC_RANDO != 0;
+
         // Spawn read thread
         let thread = thread::spawn(move || {
             let worker = AsyncReadWorker {
                 interface,
                 cancel_flag: cancel_flag_clone,
+                rando_flag,
                 callback,
             };
             worker.start();
@@ -515,6 +522,20 @@ impl Radio {
         Ok(())
     }
 
+    pub fn enable_adc_rando(&mut self, enable: bool) -> Result<()> {
+        if self.state != DeviceState::Idle {
+            anyhow::bail!("Cannot set ADC rando while device is running");
+        }
+
+        if enable {
+            self.adc_flags |= interface::REG_ADC_RANDO;
+        } else {
+            self.adc_flags &= !interface::REG_ADC_PGA;
+        }
+
+        Ok(())
+    }
+
     /// Enable or disable antenna bias voltage
     /// - `index`: 0 for direct sampling mode, 1 for tuner mode
     /// - `enable`: true to enable, false to disable
@@ -537,6 +558,7 @@ impl Radio {
 struct AsyncReadWorker {
     interface: Interface,
     cancel_flag: Arc<AtomicBool>,
+    rando_flag: bool,
     callback: ReadCallback,
 }
 
@@ -572,8 +594,14 @@ impl AsyncReadWorker {
                         // SAFETY: We ensure the buffer is properly aligned and sized for i16
                         let len = transfer.actual_len / 2;
                         let data = unsafe {
-                            std::slice::from_raw_parts(transfer.buffer.as_ptr() as *const i16, len)
+                            std::slice::from_raw_parts_mut(
+                                transfer.buffer.as_ptr() as *mut i16,
+                                len,
+                            )
                         };
+                        if self.rando_flag {
+                            Self::derando_simd_x8(data);
+                        }
                         (self.callback)(data);
                     }
 
@@ -591,6 +619,41 @@ impl AsyncReadWorker {
             }
         }
     }
+
+    // Implement De-rand algorithem
+    // if (d & 0x01 == 0x01)
+    //      d = d xor (-2)
+    // else
+    //      d = d; (unchanged)
+    fn derando_simd_x8(data: &mut [i16]) {
+        const LANES: usize = i16x8::LANES as usize;
+        let xor_vec = i16x8::splat(-2);
+
+        let mut i = 0usize;
+        let len = data.len();
+
+        // process chunks of 8
+        while i + LANES <= len {
+            // load 8 values (unaligned load)
+            let v = i16x8::from_slice_unaligned(&data[i..i + LANES]);
+
+            // compute mask: (v & 1) == 1
+            // wide supports bitwise and and comparisons that produce a mask-like vector
+            let low_bit = v & i16x8::splat(1);
+            let cmp = low_bit.simd_eq(i16x8::splat(1)); // produces a mask-like vector
+
+            // select xor_vec where cmp is true, else zero
+            let to_xor = cmp.blend(xor_vec, i16x8::splat(0));
+
+            // apply xor
+            let out = v ^ to_xor;
+
+            // store back
+            data[i..i + LANES].copy_from_slice(out.as_array());
+
+            i += LANES;
+        }
+    }
 }
 
 #[cfg(test)]
@@ -600,6 +663,26 @@ mod tests {
     use crate::interface::{FIRMWARE_VER_MAJOR, FIRMWARE_VER_MINOR};
 
     use super::*;
+
+    #[test]
+    fn test_rando() {
+        let mut data = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, -1, -2, -3, 9, -1, -2, -3];
+        let mut expected = [0i16; 16];
+
+        for i in 0..data.len() {
+            if data[i] & 1 == 1 {
+                expected[i] = data[i] ^ (-2i16);
+            } else {
+                expected[i] = data[i];
+            }
+        }
+
+        AsyncReadWorker::derando_simd_x8(&mut data);
+
+        for i in 0..data.len() {
+            assert_eq!(expected[i], data[i]);
+        }
+    }
 
     #[test]
     fn test_find_device() {

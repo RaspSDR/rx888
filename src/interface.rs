@@ -21,14 +21,15 @@ pub(crate) enum FX3Command {
 
     // (WRITE_REG merged into REGOP; use control_out)
 
-    // Read/Write Non-Volatile memory
+    // Read/Write Non-Volatile I2C memory
     // INDEX: memory address
     // VALUE: length
     // READ/Write: array of uint8
+    // Note: limit the write length to page size to avoid wrap
     NVMOP = 0x03,
 }
 
-// All registers are read and writable.
+// All registers are read and writable, all register is 32bit integer.
 #[allow(dead_code)]
 #[allow(non_camel_case_types)]
 #[repr(u8)]
@@ -71,7 +72,7 @@ pub enum Register {
 // ADC register bit flags
 pub(crate) const REG_ADC_ENABLE: u8 = 1 << 0;
 pub(crate) const REG_ADC_DITHER: u8 = 1 << 1;
-//pub(crate) const REG_ADC_RANDO: u8 = 1 << 2;
+pub(crate) const REG_ADC_RANDO: u8 = 1 << 2;
 pub(crate) const REG_ADC_PGA: u8 = 1 << 3;
 
 #[allow(dead_code)]
@@ -87,5 +88,4 @@ pub enum RadioModel {
     RX888r2 = 0x04,
     RX888plus = 0x05,
     // RXLUCY = 0x06,
-    // RX888r3 = 0x07,
 }
