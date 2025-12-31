@@ -105,18 +105,17 @@ pub fn download_firmware(device: &Device, firmware: &[u8]) -> Result<()> {
     Ok(())
 }
 
-pub fn download_firmware_spi(device: &Device, firmware: &[u8]) -> Result<()>
-{
+pub fn download_firmware_spi(device: &Device, firmware: &[u8]) -> Result<()> {
     validate_firmware_header(firmware)?;
 
     let interface = device.claim_interface(0).wait()?;
 
-    let image_size_in_pages = (firmware.len() + SPI_FLASH_PAGE_SIZE_IN_BYTE - 1) / SPI_FLASH_PAGE_SIZE_IN_BYTE;
+    let image_size_in_pages = firmware.len().div_ceil(SPI_FLASH_PAGE_SIZE_IN_BYTE);
     let total_bytes_to_write = image_size_in_pages * SPI_FLASH_PAGE_SIZE_IN_BYTE;
 
     let mut sector_num = firmware.len() / SPI_FLASH_SECTOR_SIZE_IN_BYTE;
-    if (firmware.len() % SPI_FLASH_SECTOR_SIZE_IN_BYTE) != 0 {
-        sector_num+=1;
+    if !firmware.len().is_multiple_of(SPI_FLASH_SECTOR_SIZE_IN_BYTE) {
+        sector_num += 1;
     }
 
     /* Erase the sectors */
@@ -143,11 +142,10 @@ pub fn download_firmware_spi(device: &Device, firmware: &[u8]) -> Result<()>
     Ok(())
 }
 
-fn erase_spi_sector(interface: &nusb::Interface, sector_number: u32) -> Result<()>
-{
+fn erase_spi_sector(interface: &nusb::Interface, sector_number: u32) -> Result<()> {
     let address = 1 + (sector_number << 16);
-    interface.
-        control_out(
+    interface
+        .control_out(
             ControlOut {
                 control_type: ControlType::Vendor,
                 recipient: Recipient::Device,
@@ -155,13 +153,16 @@ fn erase_spi_sector(interface: &nusb::Interface, sector_number: u32) -> Result<(
                 value: (address & 0xFFFF) as u16,
                 index: (address >> 16) as u16,
                 data: &[],
-            }, CONTROL_TIMEOUT).wait().context("Erase SPI flash failed")
+            },
+            CONTROL_TIMEOUT,
+        )
+        .wait()
+        .context("Erase SPI flash failed")
 }
 
-fn write_spi_page(interface: &nusb::Interface, address: u32, data: &[u8]) -> Result<()>
-{
-    interface.
-        control_out(
+fn write_spi_page(interface: &nusb::Interface, address: u32, data: &[u8]) -> Result<()> {
+    interface
+        .control_out(
             ControlOut {
                 control_type: ControlType::Vendor,
                 recipient: Recipient::Device,
@@ -169,7 +170,11 @@ fn write_spi_page(interface: &nusb::Interface, address: u32, data: &[u8]) -> Res
                 value: (address & 0xFFFF) as u16,
                 index: (address >> 16) as u16,
                 data,
-            }, CONTROL_TIMEOUT).wait().context("Write SPI flash failed")
+            },
+            CONTROL_TIMEOUT,
+        )
+        .wait()
+        .context("Write SPI flash failed")
 }
 
 /// Executes firmware by jumping to the specified address
