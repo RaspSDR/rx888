@@ -478,6 +478,11 @@ impl Radio {
             // Stop FX3
             Self::write_register(&self.interface, Register::REG_ADC, self.adc_flags as u32)?;
 
+            // power off most stuffs
+            Self::write_register(&self.interface, Register::REG_TUNER, 0)?;
+            Self::write_register(&self.interface, Register::REG_DIRECT_ANT_BIAS, 0)?;
+            Self::write_register(&self.interface, Register::REG_TUNER_ANT_BIAS, 0)?;
+
             self.state = DeviceState::Idle;
         }
 
