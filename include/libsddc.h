@@ -326,6 +326,16 @@ int sddc_enable_adc_dither(struct sddc_dev_t *dev, int on);
 int sddc_enable_adc_pga(struct sddc_dev_t *dev, int on);
 
 /**
+ * Enable or disable ADC RANDO, only enable this before start reading
+ *
+ * - `dev`: device handle
+ * - `on`: 0 = off, 1 = on
+ *
+ * Returns: -1 if device is not initialized or the device is busy, 0 otherwise.
+ */
+int sddc_enable_adc_rando(struct sddc_dev_t *dev, int on);
+
+/**
  * Get firmware version in format 0xMMmm (MM=major, mm=minor).
  *
  * - `dev`: device handle
@@ -333,6 +343,16 @@ int sddc_enable_adc_pga(struct sddc_dev_t *dev, int on);
  * Returns: version as 16-bit value.
  */
 uint16_t sddc_get_firmware_version(struct sddc_dev_t *dev);
+
+/**
+ * Enable or disable ADC RANDO, only enable this before start reading
+ *
+ * - `dev`: device handle
+ * - `on`: 0 = off, 1 = on
+ *
+ * Returns: -1 if device is not initialized or the device is busy, 0 otherwise.
+ */
+int sddc_enable_hf_highz(struct sddc_dev_t *dev, int on);
 
 #ifdef __cplusplus
 }  // extern "C"
