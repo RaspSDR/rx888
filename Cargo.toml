@@ -46,7 +46,7 @@ name = "usb_throughput_test"
 required-features = []
 
 [features]
-default=[]
+default=["cbinding"]
 cbinding=[]
 
 [profile.release]

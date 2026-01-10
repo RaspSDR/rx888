@@ -271,17 +271,26 @@ pub extern "C" fn sddc_get_usb_strings(
     product: *mut c_char,
     serial: *mut c_char,
 ) -> c_int {
-    if dev.is_null() {
-        return -1;
-    }
-    // Note: SdrDevice trait doesn't expose USB strings for an open device
-    // This would require downcasting to Radio, which is not safe with trait objects
-    // Return empty strings for now
-    unsafe {
-        write_empty_cstr(manufact);
-        write_empty_cstr(product);
-        write_empty_cstr(serial);
-    }
+    with_device_ref!(dev, |device: &Radio| {
+        let info = device.device_info();
+
+        if let Some(m) = info.manufacturer_string() {
+            write_cstr_limited(manufact, m, 256);
+        } else {
+            write_empty_cstr(manufact);
+        }
+        if let Some(p) = info.product_string() {
+            write_cstr_limited(product, p, 256);
+        } else {
+            write_empty_cstr(product);
+        }
+        if let Some(s) = info.serial_number() {
+            write_cstr_limited(serial, s, 256);
+        } else {
+            write_empty_cstr(serial);
+        }
+    });
+
     0
 }
 
@@ -894,8 +903,11 @@ mod sddc_tests {
             product.as_mut_ptr(),
             serial.as_mut_ptr(),
         );
-        // Note: This returns empty strings as device_info is not accessible via trait
+
         assert_eq!(ret, 0);
+        // assert!(manufact[0] != 0, "Manufacturer string should not be empty");
+        assert!(product[0] != 0, "Product string should not be empty");
+        assert!(serial[0] != 0, "Serial string should not be empty");
 
         close_test_device(dev);
     }
