@@ -819,9 +819,9 @@ mod sddc_tests {
 
     #[test]
     fn test_get_device_usb_strings() {
-        let mut manufact = [0i8; 256];
-        let mut product = [0i8; 256];
-        let mut serial = [0i8; 256];
+        let mut manufact = [0; 256];
+        let mut product = [0; 256];
+        let mut serial = [0; 256];
 
         let ret = sddc_get_device_usb_strings(
             0,
@@ -845,9 +845,9 @@ mod sddc_tests {
 
     #[test]
     fn test_get_device_usb_strings_invalid_index() {
-        let mut manufact = [0i8; 256];
-        let mut product = [0i8; 256];
-        let mut serial = [0i8; 256];
+        let mut manufact = [0; 256];
+        let mut product = [0; 256];
+        let mut serial = [0; 256];
 
         let ret = sddc_get_device_usb_strings(
             999,
@@ -893,9 +893,9 @@ mod sddc_tests {
     fn test_get_usb_strings_open_device() {
         let dev = create_test_device();
 
-        let mut manufact = [0i8; 256];
-        let mut product = [0i8; 256];
-        let mut serial = [0i8; 256];
+        let mut manufact = [0; 256];
+        let mut product = [0; 256];
+        let mut serial = [0; 256];
 
         let ret = sddc_get_usb_strings(
             dev,
