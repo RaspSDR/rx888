@@ -89,4 +89,5 @@ pub enum RadioModel {
     RX888r2 = 0x04,
     RX888plus = 0x05,
     // RXLUCY = 0x06,
+    RX888pro = 0x07,
 }
