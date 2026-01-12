@@ -57,6 +57,8 @@ pub enum Register {
     REG_DIRECT_IF_GAIN = 0x90,
     REG_DIRECT_RF_GAIN = 0x91,
     REG_DIRECT_ANT_BIAS = 0x92,
+    // PRO ONLY: 0 - 64MHz (default), 1 - 32MHz, 2 - FM undersampling, 3 - Bypass mode
+    REG_DIRECT_ADC_FILTER = 0x93,
 
     REG_TUNER_IF_GAIN = 0xa0,
     REG_TUNER_RF_GAIN = 0xa1,

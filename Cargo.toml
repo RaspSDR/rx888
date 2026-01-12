@@ -1,6 +1,6 @@
 [package]
 name = "sddc"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
 authors = ["SDDC Lab"]
 license = "LGPL-2.1-or-later"

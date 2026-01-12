@@ -26,6 +26,23 @@ enum DeviceState {
     Running,
 }
 
+/// ADC filter for RX888 PRO
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(C)]
+pub enum FilterMode {
+    /// 64Mhz LPF Filter
+    Freq64MHz = 0,
+
+    /// 32Mhz LPF Filter
+    Freq32MHz = 1,
+
+    /// BPF Filter for FM Undersampling
+    FMUndersample = 2,
+
+    /// Bypass mode: anti-aliasing must be handled by the input signal
+    Bypass = 3,
+}
+
 /// Physical RX888-family SDR device API.
 ///
 /// This struct wraps the FX3 USB interface and firmware registers to control
@@ -62,6 +79,7 @@ pub struct Radio {
     // state
     state: DeviceState,
     adc_flags: u8,
+    adc_filter: FilterMode,
 
     // async read state
     cancel_flag: Option<Arc<AtomicBool>>,
@@ -151,11 +169,17 @@ impl Radio {
                         if_gain: 0.0,
                         rf_gain: 0.0,
                         direct_sampling: true,
-                        xtal_freq: if model == RadioModel::RX888pro as u8 { 61_440_000 } else { 64_000_000 },
+                        xtal_freq: if model == RadioModel::RX888pro as u8 {
+                            61_440_000
+                        } else {
+                            64_000_000
+                        },
                         state: DeviceState::Idle,
                         adc_flags: 0,
                         cancel_flag: None,
                         read_thread: None,
+
+                        adc_filter: FilterMode::Freq64MHz,
                     })
                 }
             }
@@ -415,7 +439,11 @@ impl Radio {
         )?;
 
         Self::write_register(&self.interface, Register::REG_ADCFREQ, self.xtal_freq)?;
-
+        Self::write_register(
+            &self.interface,
+            Register::REG_DIRECT_ADC_FILTER,
+            self.adc_filter as u32,
+        )?;
         // since state is set to running, other settings will be applied immediately
         self.set_center_freq(self.center_freq)?;
         self.set_if_gain(self.if_gain)?;
@@ -573,6 +601,21 @@ impl Radio {
                 &self.interface,
                 Register::REG_ADC,
                 (self.adc_flags | interface::REG_ADC_ENABLE) as u32,
+            )?;
+        }
+
+        Ok(())
+    }
+
+    pub fn set_adc_filter(&mut self, filter: FilterMode) -> Result<()> {
+        self.adc_filter = filter;
+
+        if self.state == DeviceState::Running {
+            // Apply immediately
+            Self::write_register(
+                &self.interface,
+                Register::REG_DIRECT_ADC_FILTER,
+                self.adc_filter as u32,
             )?;
         }
 

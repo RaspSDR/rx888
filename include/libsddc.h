@@ -6,6 +6,28 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+/**
+ * ADC filter for RX888 PRO
+ */
+typedef enum FilterMode {
+  /**
+   * 64Mhz LPF Filter
+   */
+  Freq64MHz = 0,
+  /**
+   * 32Mhz LPF Filter
+   */
+  Freq32MHz = 1,
+  /**
+   * BPF Filter for FM Undersampling
+   */
+  FMUndersample = 2,
+  /**
+   * Bypass mode: anti-aliasing must be handled by the input signal
+   */
+  Bypass = 3,
+} FilterMode;
+
 struct sddc_dev_t;
 
 typedef void (*sddc_read_async_cb_t)(const int16_t *buf, uint32_t count, void *ctx);
@@ -353,6 +375,14 @@ uint16_t sddc_get_firmware_version(struct sddc_dev_t *dev);
  * Returns: -1 if device is not initialized or the device is busy, 0 otherwise.
  */
 int sddc_enable_hf_highz(struct sddc_dev_t *dev, int on);
+
+/**
+ * Set ADC filter mode (RX888 PRO only).
+ * - `dev`: device handle
+ * - `mode`: filter mode
+ * Returns: -1 if device is not initialized or the device is not PRO, 0 otherwise.
+ */
+int sddc_set_adc_filter(struct sddc_dev_t *dev, enum FilterMode mode);
 
 #ifdef __cplusplus
 }  // extern "C"
