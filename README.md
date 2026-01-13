@@ -1,6 +1,6 @@
-# rx-888 SDR Driver (Rust)
+# RX-888 SDR Driver (Rust)
 
-A native Rust driver for the rx-888 family of software-defined radios (SDR).
+A native Rust driver for the RX-888 family of software-defined radios (SDR).
 
 ## Overview
 
@@ -14,7 +14,7 @@ A native Rust driver for the rx-888 family of software-defined radios (SDR).
 - USB: Uses libusb (via Rust nusb) to communicate with devices.
 
 ## Compatibility & Firmware notes
-- This project targets the rx-888 family of devices, include RX-888 and RX-888 MK2.
+- This project targets the RX-888 family of devices, include RX-888 and RX-888 MK2.
 - The original Cypress-based driver is deprecated — this repository provides the modern replacement.
 - NOTE: PID/VID values changed in new firmware revisions. If you are using the firmware in this repo, update any udev rules or platform-specific device mappings accordingly. The bootloader device is not changed (still 0x04B4/0x00f3) but after uploading firmware, the device PID/VID is 0x04B4/*0x3DDC*.
 - The interface between driver and firmware is also changed. It is using a register based approach now. You can find the reference from src/interface.rs, which contains the detailed comments for the interface.
@@ -34,7 +34,7 @@ cargo build --release --features cbinding
 ```
 
 ## Unit Testing
-- Prerequisites: Plug a rx-888 device on your dev box
+- Prerequisites: Plug a RX-888 device on your dev box
 - To Test:
 
 ```

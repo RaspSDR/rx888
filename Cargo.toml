@@ -5,7 +5,7 @@ edition = "2024"
 authors = ["SDDC Lab"]
 license = "LGPL-2.1-or-later"
 homepage="http://www.rx-888.com"
-description="A native Rust driver for the rx-888 family of software-defined radios (SDR)."
+description="A native Rust driver for the RX-888 family of software-defined radios (SDR)."
 
 [lib]
 crate-type = ["cdylib", "lib", "staticlib"]
