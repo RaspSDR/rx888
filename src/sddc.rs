@@ -773,8 +773,10 @@ pub extern "C" fn sddc_enable_hf_highz(dev: *mut sddc_dev_t, on: c_int) -> c_int
 }
 
 /// Set ADC filter mode (RX888 PRO only).
+/// 
 /// - `dev`: device handle
 /// - `mode`: filter mode
+/// 
 /// Returns: -1 if device is not initialized or the device is not PRO, 0 otherwise.
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[unsafe(no_mangle)]
