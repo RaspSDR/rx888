@@ -12,9 +12,9 @@ use std::time::{Duration, Instant};
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
-    /// Sample rate in MHz (e.g., 32, 64, 128)
-    #[arg(short, long, default_value_t = 64)]
-    samplerate: u32,
+    /// Sample rate in MHz (e.g., 32, 64, 122.88)
+    #[arg(short, long, default_value_t = 122.88f32)]
+    samplerate: f32,
 }
 
 fn main() -> Result<()> {
@@ -33,7 +33,7 @@ fn main() -> Result<()> {
     );
 
     // Configure for specified data rate
-    let samplerate = args.samplerate * 1_000_000; // Convert MHz to Hz
+    let samplerate = (args.samplerate * 1_000_000.0) as u32; // Convert MHz to Hz
     radio.set_xtal_freq(samplerate)?;
     radio.set_direct_sampling(true)?;
     radio.set_center_freq(7_100_000)?;
