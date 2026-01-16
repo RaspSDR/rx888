@@ -3,10 +3,6 @@
 use std::f32;
 use std::sync::OnceLock;
 
-const GAIN_SWEET_POINT: usize = 18;
-const HIGH_GAIN_RATIO: f32 = 0.409f32;
-const LOW_GAIN_RATIO: f32 = 0.059f32;
-
 const VHF_IF_STEPS: [f32; 16] = [
     -4.7, -2.1, 0.5, 3.5, 7.7, 11.2, 13.6, 14.9, 16.3, 19.5, 23.1, 26.5, 30.0, 33.7, 37.2, 40.8,
 ];
@@ -16,21 +12,7 @@ const VHF_RF_STEPS: [f32; 29] = [
     32.8, 33.8, 36.4, 37.2, 38.6, 40.2, 42.1, 43.4, 43.9, 44.5, 48.0, 49.6,
 ];
 
-const HF_RF_STEP_SIZE: usize = 64;
-const HF_IF_STEP_SIZE: usize = 127;
-
-fn build_hf_if_steps() -> Vec<f32> {
-    let mut v = Vec::with_capacity(HF_IF_STEP_SIZE);
-    for i in 0..HF_IF_STEP_SIZE {
-        let val = if i > GAIN_SWEET_POINT {
-            20.0f32 * (HIGH_GAIN_RATIO * ((i - GAIN_SWEET_POINT) as f32 + 3.0)).log10()
-        } else {
-            20.0f32 * (LOW_GAIN_RATIO * ((i + 1) as f32)).log10()
-        };
-        v.push(-val);
-    }
-    v
-}
+const HF_RF_STEP_SIZE: usize = 128;
 
 fn build_hf_rf_steps() -> Vec<f32> {
     let mut v = Vec::with_capacity(HF_RF_STEP_SIZE);
@@ -39,45 +21,33 @@ fn build_hf_rf_steps() -> Vec<f32> {
         let idx = HF_RF_STEP_SIZE - i - 1;
         let mut val = 0.0f32;
         if (idx & 0x01) != 0 {
-            val += 0.5f32;
+            val -= 0.5f32;
         }
         if (idx & 0x02) != 0 {
-            val += 1.0f32;
+            val -= 1.0f32;
         }
         if (idx & 0x04) != 0 {
-            val += 2.0f32;
+            val -= 2.0f32;
         }
         if (idx & 0x08) != 0 {
-            val += 4.0f32;
+            val -= 4.0f32;
         }
         if (idx & 0x10) != 0 {
-            val += 8.0f32;
+            val -= 8.0f32;
         }
         if (idx & 0x20) != 0 {
-            val += 16.0f32;
+            val -= 16.0f32;
         }
-        v.push(-val);
+        if (idx & 0x40) != 0 {
+            val += 31.5f32;
+        }
+        v.push(val);
     }
     v
 }
 
-static HF_IF_CACHE: OnceLock<Vec<f32>> = OnceLock::new();
 static HF_RF_CACHE: OnceLock<Vec<f32>> = OnceLock::new();
-static HF_IF_USER_CACHE: OnceLock<Vec<f32>> = OnceLock::new();
 static VHF_IF_USER_CACHE: OnceLock<Vec<f32>> = OnceLock::new();
-
-fn hf_if_steps_static() -> &'static [f32] {
-    let v = HF_IF_CACHE.get_or_init(build_hf_if_steps);
-    v.as_slice()
-}
-
-fn hf_if_user_steps_static() -> &'static [f32] {
-    let v = HF_IF_USER_CACHE.get_or_init(|| {
-        // User-facing gain semantics: positive values mean more gain, so flip sign
-        hf_if_steps_static().to_vec()
-    });
-    v.as_slice()
-}
 
 fn hf_rf_steps_static() -> &'static [f32] {
     let v = HF_RF_CACHE.get_or_init(build_hf_rf_steps);
@@ -93,7 +63,7 @@ pub fn get_if_gain_steps(direct_sampling: bool) -> &'static [f32] {
     if !direct_sampling {
         vhf_if_user_steps_static()
     } else {
-        hf_if_user_steps_static()
+        [0.0f32].as_slice()
     }
 }
 
