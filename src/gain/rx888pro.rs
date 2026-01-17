@@ -12,7 +12,7 @@ const VHF_RF_STEPS: [f32; 29] = [
     32.8, 33.8, 36.4, 37.2, 38.6, 40.2, 42.1, 43.4, 43.9, 44.5, 48.0, 49.6,
 ];
 
-const HF_RF_STEP_SIZE: usize = 128;
+const HF_RF_STEP_SIZE: usize = 64;
 
 fn build_hf_rf_steps() -> Vec<f32> {
     let mut v = Vec::with_capacity(HF_RF_STEP_SIZE);
@@ -38,9 +38,6 @@ fn build_hf_rf_steps() -> Vec<f32> {
         if (idx & 0x20) != 0 {
             val -= 16.0f32;
         }
-        if (idx & 0x40) != 0 {
-            val += 31.5f32;
-        }
         v.push(val);
     }
     v
@@ -63,7 +60,7 @@ pub fn get_if_gain_steps(direct_sampling: bool) -> &'static [f32] {
     if !direct_sampling {
         vhf_if_user_steps_static()
     } else {
-        [0.0f32].as_slice()
+        &[0.0f32, 18.0f32]
     }
 }
 
