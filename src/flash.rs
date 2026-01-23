@@ -1,6 +1,5 @@
+use crate::usb_interface::UsbInterface;
 use anyhow::{Context, Result};
-use nusb::transfer::{ControlIn, ControlOut, ControlType, Recipient};
-use nusb::{Interface, MaybeFuture};
 use std::{num::Wrapping, time::Duration};
 
 const RW_RAM: u8 = 0xA0;
@@ -42,7 +41,7 @@ fn read_u32_le(firmware: &[u8], offset: usize) -> Result<u32> {
 }
 
 /// Downloads firmware to the FX3 device
-pub fn download_firmware(interface: &Interface, firmware: &[u8]) -> Result<()> {
+pub fn download_firmware<I: UsbInterface>(interface: &I, firmware: &[u8]) -> Result<()> {
     validate_firmware_header(firmware)?;
 
     let mut checksum = Wrapping(0u32);
@@ -59,7 +58,7 @@ pub fn download_firmware(interface: &Interface, firmware: &[u8]) -> Result<()> {
         }
 
         let data_size = (length as usize) * WORD_SIZE;
-        println!("Loading {} bytes to address {:#010x}", data_size, address);
+        log::info!("Loading {} bytes to address {:#010x}", data_size, address);
 
         let data = firmware
             .get(offset..offset + data_size)
@@ -74,8 +73,8 @@ pub fn download_firmware(interface: &Interface, firmware: &[u8]) -> Result<()> {
         for (chunk_idx, chunk) in data.chunks(CHUNK_SIZE).enumerate() {
             let addr = address + (chunk_idx as u32 * CHUNK_SIZE as u32);
 
-            write_ram(&interface, addr, chunk)?;
-            let readback_data = read_ram(&interface, addr, CHUNK_SIZE as u16)?;
+            write_ram(interface, addr, chunk)?;
+            let readback_data = read_ram(interface, addr, CHUNK_SIZE as u16)?;
 
             if chunk != &readback_data[..chunk.len()] {
                 anyhow::bail!("Data verification failed at address {:#010x}", addr);
@@ -83,7 +82,7 @@ pub fn download_firmware(interface: &Interface, firmware: &[u8]) -> Result<()> {
         }
     };
 
-    println!("Jump address: {:#010x}", jump_address);
+    log::info!("Jump address: {:#010x}", jump_address);
 
     let firmware_checksum = read_u32_le(firmware, offset)?;
 
@@ -93,51 +92,37 @@ pub fn download_firmware(interface: &Interface, firmware: &[u8]) -> Result<()> {
         checksum.0,
         firmware_checksum
     );
-    println!("Checksum verified: {:#010x}", checksum.0);
+    log::info!("Checksum verified: {:#010x}", checksum.0);
 
     // Execute firmware at jump address
-    run_program(&interface, jump_address)?;
+    run_program(interface, jump_address)?;
 
     Ok(())
 }
 
 /// Executes firmware by jumping to the specified address
-fn run_program(interface: &Interface, address: u32) -> Result<()> {
+fn run_program<I: UsbInterface>(interface: &I, address: u32) -> Result<()> {
     write_ram(interface, address, &[])
 }
 
 /// Writes data to RAM via USB control transfer
-fn write_ram(interface: &Interface, address: u32, data: &[u8]) -> Result<()> {
-    interface
-        .control_out(
-            ControlOut {
-                control_type: ControlType::Vendor,
-                recipient: Recipient::Device,
-                request: RW_RAM,
-                value: (address & 0xFFFF) as u16,
-                index: (address >> 16) as u16,
-                data,
-            },
-            CONTROL_TIMEOUT,
-        )
-        .wait()
-        .context("USB write failed")
+fn write_ram<I: UsbInterface>(interface: &I, address: u32, data: &[u8]) -> Result<()> {
+    interface.control_write(
+        RW_RAM,
+        (address & 0xFFFF) as u16,
+        (address >> 16) as u16,
+        data,
+        CONTROL_TIMEOUT,
+    )
 }
 
 /// Reads data from RAM via USB control transfer
-fn read_ram(interface: &Interface, address: u32, length: u16) -> Result<Vec<u8>> {
-    interface
-        .control_in(
-            ControlIn {
-                control_type: ControlType::Vendor,
-                recipient: Recipient::Device,
-                request: RW_RAM,
-                value: (address & 0xFFFF) as u16,
-                index: (address >> 16) as u16,
-                length,
-            },
-            CONTROL_TIMEOUT,
-        )
-        .wait()
-        .context("USB read failed")
+fn read_ram<I: UsbInterface>(interface: &I, address: u32, length: u16) -> Result<Vec<u8>> {
+    interface.control_read(
+        RW_RAM,
+        (address & 0xFFFF) as u16,
+        (address >> 16) as u16,
+        length,
+        CONTROL_TIMEOUT,
+    )
 }

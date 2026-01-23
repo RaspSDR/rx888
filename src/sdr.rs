@@ -11,6 +11,9 @@ use wide::{CmpEq, i16x8};
 use crate::gain;
 use crate::interface::{self, FX3Command, REG_ADC_ENABLE, RadioModel, Register};
 
+#[cfg(target_os = "windows")]
+use crate::win_usb::WinUsb;
+
 const BUILTIN_FIRMWARE: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/firmware/RX888_FW.img"
@@ -199,30 +202,48 @@ impl Radio {
     /// Filters enumerated USB devices by expected VID/PID and SuperSpeed,
     /// returning the Nth match. Useful when multiple radios are connected.
     pub fn find_device(index: u32) -> Option<DeviceInfo> {
-        let devices = list_devices().wait().ok()?;
-
         let mut flashed_devices = 0;
 
-        // try to upload firmware if device found
-        devices
+        // Try to find bootloader devices using nusb first
+        let devices = list_devices().wait().ok()?;
+        let bootloader_devices: Vec<_> = devices
             .into_iter()
             .filter(|d| {
                 d.vendor_id() == interface::FIRMWARE_VID
                     && d.product_id() == interface::BOOTLOADER_PID
             })
-            .for_each(|device_info| {
-                flashed_devices += 1;
-                if let Ok(device) = device_info.open().wait() {
-                    log::info!("Found bootloader device, attempting to flash firmware...");
-                    if let Ok(interface) = device.claim_interface(0).wait() {
-                        if let Ok(()) =
-                            crate::flash::download_firmware(&interface, BUILTIN_FIRMWARE)
-                        {
-                            log::info!("Firmware flashed successfully.");
-                        }
+            .collect();
+
+        // Try flashing with nusb
+        for device_info in &bootloader_devices {
+            if let Ok(device) = device_info.open().wait() {
+                log::info!("Found bootloader device via nusb, attempting to flash firmware...");
+                if let Ok(interface) = device.claim_interface(0).wait()
+                    && let Ok(()) = crate::flash::download_firmware(&interface, BUILTIN_FIRMWARE)
+                {
+                    log::info!("Firmware flashed successfully via nusb.");
+                    flashed_devices += 1;
+                    continue;
+                }
+            }
+
+            // If nusb failed to open or flash, try WinUsb on Windows
+            #[cfg(target_os = "windows")]
+            {
+                log::info!("nusb failed to access device, trying WinUsb...");
+                if let Some(win_usb) =
+                    WinUsb::open(interface::FIRMWARE_VID, interface::BOOTLOADER_PID)
+                {
+                    log::info!(
+                        "Found bootloader device via WinUsb, attempting to flash firmware..."
+                    );
+                    if let Ok(()) = crate::flash::download_firmware(&win_usb, BUILTIN_FIRMWARE) {
+                        log::info!("Firmware flashed successfully via WinUsb.");
+                        flashed_devices += 1;
                     }
                 }
-            });
+            }
+        }
 
         if flashed_devices > 0 {
             thread::sleep(Duration::from_millis(500));
