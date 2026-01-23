@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use nusb::transfer::{ControlIn, ControlOut, ControlType, Recipient};
-use nusb::{Device, MaybeFuture};
+use nusb::{Interface, MaybeFuture};
 use std::{num::Wrapping, time::Duration};
 
 const RW_RAM: u8 = 0xA0;
@@ -42,11 +42,10 @@ fn read_u32_le(firmware: &[u8], offset: usize) -> Result<u32> {
 }
 
 /// Downloads firmware to the FX3 device
-pub fn download_firmware(device: &Device, firmware: &[u8]) -> Result<()> {
+pub fn download_firmware(interface: &Interface, firmware: &[u8]) -> Result<()> {
     validate_firmware_header(firmware)?;
 
     let mut checksum = Wrapping(0u32);
-    let interface = device.claim_interface(0).wait()?;
 
     let mut offset = FIRMWARE_HEADER_SIZE;
     let jump_address = loop {
@@ -103,12 +102,12 @@ pub fn download_firmware(device: &Device, firmware: &[u8]) -> Result<()> {
 }
 
 /// Executes firmware by jumping to the specified address
-fn run_program(interface: &nusb::Interface, address: u32) -> Result<()> {
+fn run_program(interface: &Interface, address: u32) -> Result<()> {
     write_ram(interface, address, &[])
 }
 
 /// Writes data to RAM via USB control transfer
-fn write_ram(interface: &nusb::Interface, address: u32, data: &[u8]) -> Result<()> {
+fn write_ram(interface: &Interface, address: u32, data: &[u8]) -> Result<()> {
     interface
         .control_out(
             ControlOut {
@@ -126,7 +125,7 @@ fn write_ram(interface: &nusb::Interface, address: u32, data: &[u8]) -> Result<(
 }
 
 /// Reads data from RAM via USB control transfer
-fn read_ram(interface: &nusb::Interface, address: u32, length: u16) -> Result<Vec<u8>> {
+fn read_ram(interface: &Interface, address: u32, length: u16) -> Result<Vec<u8>> {
     interface
         .control_in(
             ControlIn {

@@ -214,10 +214,12 @@ impl Radio {
                 flashed_devices += 1;
                 if let Ok(device) = device_info.open().wait() {
                     log::info!("Found bootloader device, attempting to flash firmware...");
-                    if let Err(e) = crate::flash::download_firmware(&device, BUILTIN_FIRMWARE) {
-                        log::error!("Failed to flash device: {}", e);
-                    } else {
-                        log::info!("Firmware flashed successfully.");
+                    if let Ok(interface) = device.claim_interface(0).wait() {
+                        if let Ok(()) =
+                            crate::flash::download_firmware(&interface, BUILTIN_FIRMWARE)
+                        {
+                            log::info!("Firmware flashed successfully.");
+                        }
                     }
                 }
             });
