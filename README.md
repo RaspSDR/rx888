@@ -27,12 +27,6 @@ A native Rust driver for the RX-888 family of software-defined radios (SDR).
 cargo build --release
 ```
 
-- In order to build C dynamic lib, please enable cbinging feature
-
-```
-cargo build --release --features cbinding
-```
-
 ## Unit Testing
 - Prerequisites: Plug a RX-888 device on your dev box
 - To Test:

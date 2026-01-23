@@ -39,15 +39,9 @@ env_logger = "0.11"
 
 [[bin]]
 name = "capture_raw_data"
-required-features = []
 
 [[bin]]
 name = "usb_throughput_test"
-required-features = []
-
-[features]
-default=["cbinding"]
-cbinding=[]
 
 [profile.release]
 lto=true

@@ -67,7 +67,7 @@ jobs:
 
       - name: Build (release with C bindings)
         run: |
-          cargo build --release --target ${{ matrix.target }} --features cbinding
+          cargo build --release --target ${{ matrix.target }}
 
       - name: Prepare package
         if: github.event_name == 'push'
