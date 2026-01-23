@@ -374,13 +374,3 @@ mod windows_impl {
 #[allow(unused_imports)]
 pub use windows_impl::WinUsb;
 
-/// Non-Windows stub (always returns None on non-Windows platforms).
-#[cfg(not(target_os = "windows"))]
-pub struct WinUsb;
-
-#[cfg(not(target_os = "windows"))]
-impl WinUsb {
-    pub fn open() -> Option<Self> {
-        None
-    }
-}
