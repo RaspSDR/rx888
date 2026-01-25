@@ -51,7 +51,9 @@ pub enum Register {
     REG_ADC = 0x02,
 
     // direct sampling or tuner mode,
-    // | Byte 0: 0 = Tuner mode, 1 = Direct sampling |
+    // | Bit 0 (RW): Tuner Enable: 0 = Direct sampling, 1 = Tuner mode, (RW)
+    // | Bit 1 (R_): PLL Lock : 0 = Unlock, 1 = Locked
+    // | Bit 2 (R_): Harmonic mode enable: 0 = fundamental, 1 = harmonic
     REG_TUNER = 0x82,
 
     REG_DIRECT_IF_GAIN = 0x90,

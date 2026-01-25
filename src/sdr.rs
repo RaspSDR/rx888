@@ -108,7 +108,7 @@ impl Radio {
     }
 
     fn write_register(interface: &Interface, reg: Register, value: u32) -> Result<()> {
-        log::info!("Writing register {:?} with value {}", reg, value);
+        log::debug!("Writing register {:?} with value {}", reg, value);
         let data = value.to_le_bytes();
         interface
             .control_out(
@@ -643,6 +643,18 @@ impl Radio {
         }
 
         Ok(())
+    }
+
+    /// Get tuner status:
+    /// Returns: Result<(bool, bool), Error>
+    /// - PLL locked: true if PLL is locked, false otherwise
+    /// - Harmonic mode: true if Harmonic is used, false otherwise
+    /// - Last freq tune success: true if last frequency tune was successful, false otherwise
+    pub fn get_tuner_status(&self) -> Result<(bool, bool)> {
+        let status = Self::read_register(&self.interface, Register::REG_TUNER)?;
+        let locked = (status & 0x2) != 0;
+        let harmonic = (status & 0x4) != 0;
+        Ok((locked, harmonic))
     }
 }
 
