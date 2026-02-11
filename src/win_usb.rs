@@ -373,4 +373,3 @@ mod windows_impl {
 #[cfg(target_os = "windows")]
 #[allow(unused_imports)]
 pub use windows_impl::WinUsb;
-
