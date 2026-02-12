@@ -89,7 +89,7 @@ pub extern "C" fn sddc_get_device_count() -> u32 {
         count += 1;
     }
 
-    count + 1
+    count
 }
 
 /// Get device name by index.

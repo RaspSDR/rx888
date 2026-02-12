@@ -298,7 +298,8 @@ int sddc_set_direct_sampling(struct sddc_dev_t *dev, int on);
 int sddc_get_direct_sampling(struct sddc_dev_t *dev);
 
 /**
- * Read samples asynchronously; blocks until canceled via `sddc_cancel_async()`.
+ * Read samples asynchronously; the callback will get called repeatedly until canceled via `sddc_cancel_async()`.
+ * Note: this API is not blocking. It will return immediately after starting the asynchronous read.
  *
  * - `dev`: device handle
  * - `cb`: callback invoked with received samples
