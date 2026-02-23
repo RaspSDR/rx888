@@ -79,6 +79,7 @@ pub(crate) const REG_ADC_DITHER: u8 = 1 << 1;
 pub(crate) const REG_ADC_RANDO: u8 = 1 << 2;
 pub(crate) const REG_ADC_PGA: u8 = 1 << 3;
 pub(crate) const REG_HF_HIGHZ: u8 = 1 << 4;
+pub(crate) const REG_EXT_CLOCK: u8 = 1 << 5;
 
 #[allow(dead_code)]
 #[allow(non_camel_case_types)]

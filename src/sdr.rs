@@ -630,6 +630,31 @@ impl Radio {
         Ok(())
     }
 
+    /// Enable or disable external clock mode (HF high-Z).
+    /// When enabled, the ADC clock is driven by an external source connected to
+    /// the HF input, and the internal crystal is disconnected.
+    ///
+    /// <param name="enable">true to enable external clock mode, false to disable</param>
+    /// <returns>Result<(), Error></returns>
+    pub fn enable_ext_clock(&mut self, enable: bool) -> Result<()> {
+        if enable {
+            self.adc_flags |= interface::REG_EXT_CLOCK;
+        } else {
+            self.adc_flags &= !interface::REG_EXT_CLOCK;
+        }
+
+        if self.state == DeviceState::Running {
+            // Apply immediately
+            Self::write_register(
+                &self.interface,
+                Register::REG_ADC,
+                (self.adc_flags | interface::REG_ADC_ENABLE) as u32,
+            )?;
+        }
+
+        Ok(())
+    }
+
     pub fn set_adc_filter(&mut self, filter: FilterMode) -> Result<()> {
         self.adc_filter = filter;
 

@@ -772,6 +772,25 @@ pub extern "C" fn sddc_enable_hf_highz(dev: *mut sddc_dev_t, on: c_int) -> c_int
     })
 }
 
+/// Enable or disable external clock input (RX888 PRO only).
+/// When enabled, the device uses an external clock source instead of its internal crystal oscillator.
+/// This can be used to improve frequency stability or to synchronize multiple devices.
+///
+/// - `dev`: device handle
+/// - `on`: 0 = disabled, 1 = enabled
+///
+/// Returns: -1 if device is not initialized, the device is not PRO, or the device is busy; 0 otherwise.
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+#[unsafe(no_mangle)]
+pub extern "C" fn sddc_enable_ext_clock(dev: *mut sddc_dev_t, on: c_int) -> c_int {
+    with_device!(dev, |device: &mut Radio| {
+        if device.enable_ext_clock(on != 0).is_err() {
+            return -1;
+        }
+        0
+    })
+}
+
 /// Set ADC filter mode (RX888 PRO only).
 ///
 /// - `dev`: device handle
