@@ -298,8 +298,7 @@ int sddc_set_direct_sampling(struct sddc_dev_t *dev, int on);
 int sddc_get_direct_sampling(struct sddc_dev_t *dev);
 
 /**
- * Read samples asynchronously; the callback will get called repeatedly until canceled via `sddc_cancel_async()`.
- * Note: this API is not blocking. It will return immediately after starting the asynchronous read.
+ * Read samples asynchronously; blocks until canceled via `sddc_cancel_async()`.
  *
  * - `dev`: device handle
  * - `cb`: callback invoked with received samples
@@ -378,9 +377,24 @@ uint16_t sddc_get_firmware_version(struct sddc_dev_t *dev);
 int sddc_enable_hf_highz(struct sddc_dev_t *dev, int on);
 
 /**
+ * Enable or disable external clock input (RX888 PRO only).
+ * When enabled, the device uses an external clock source instead of its internal crystal oscillator.
+ * This can be used to improve frequency stability or to synchronize multiple devices.
+ *
+ * - `dev`: device handle
+ * - `on`: 0 = disabled, 1 = enabled
+ *
+ * Returns: -1 if device is not initialized, the device is not PRO, or the device is busy; 0 otherwise.
+ */
+int sddc_enable_ext_clock(struct sddc_dev_t *dev,
+                          int on);
+
+/**
  * Set ADC filter mode (RX888 PRO only).
+ *
  * - `dev`: device handle
  * - `mode`: filter mode
+ *
  * Returns: -1 if device is not initialized or the device is not PRO, 0 otherwise.
  */
 int sddc_set_adc_filter(struct sddc_dev_t *dev, enum FilterMode mode);

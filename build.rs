@@ -9,10 +9,6 @@ fn main() {
     let output_file = out_dir_pb.join("libsddc.h");
     let profile = env::var("PROFILE").unwrap_or_else(|_| "debug".to_string());
 
-    if std::env::var_os("CARGO_FEATURE_CBINDING").is_none() {
-        return;
-    }
-
     cbindgen::Builder::new()
         .with_crate(crate_dir)
         .with_language(cbindgen::Language::C)
