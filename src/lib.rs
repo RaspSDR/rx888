@@ -9,5 +9,6 @@ mod win_usb;
 
 pub use sdr::FilterMode;
 pub use sdr::Radio;
+pub use sdr::SdrError;
 
 mod sddc;

@@ -3,9 +3,13 @@ use std::ffi::CString;
 use std::os::raw::{c_char, c_int, c_void};
 use std::sync::OnceLock;
 
-use crate::sdr::Radio;
+use crate::sdr::{Radio, SdrError};
 
-// Opaque struct for FFI - cbindgen will generate this as an opaque pointer
+/// Opaque handle to an open RX888-family SDR device.
+///
+/// Obtain a handle via `sddc_open()` and release it with `sddc_close()`.
+/// All other API functions require this handle as their first argument.
+/// The handle must not be shared across threads without external synchronization.
 #[repr(C)]
 #[allow(non_camel_case_types)]
 pub struct sddc_dev_t {
@@ -26,7 +30,7 @@ impl sddc_dev_t {
 macro_rules! with_device {
     ($dev:expr, $body:expr) => {{
         if $dev.is_null() {
-            return -1;
+            return SDDC_ERROR;
         }
         unsafe {
             let device = sddc_dev_t::as_device_mut($dev);
@@ -39,7 +43,7 @@ macro_rules! with_device {
 macro_rules! with_device_ref {
     ($dev:expr, $body:expr) => {{
         if $dev.is_null() {
-            return -1;
+            return SDDC_ERROR;
         }
         unsafe {
             let device = sddc_dev_t::as_device_ref($dev);
@@ -48,6 +52,56 @@ macro_rules! with_device_ref {
     }};
 }
 
+/// Map a typed `SdrError` to a C integer error code.
+///
+/// Error code table:
+/// -  0  SDDC_SUCCESS           – operation succeeded (not an error)
+/// - -1  SDDC_ERROR             – null device handle or unspecified error
+/// - -2  SDDC_ERROR_BUSY        – setting cannot be changed while device is streaming
+/// - -3  SDDC_ERROR_INVALID_PARAM – parameter value out of allowed range
+/// - -4  SDDC_ERROR_IO          – USB transfer or register communication failure
+/// - -5  SDDC_ERROR_NO_DEVICE   – no device found at the requested index
+/// - -6  SDDC_ERROR_USB_SPEED   – device is not connected at SuperSpeed (USB 3.0)
+/// - -7  SDDC_ERROR_FIRMWARE    – installed firmware version does not match
+/// - -8  SDDC_ERROR_OPEN        – could not open or claim the USB device
+fn sdr_error_to_c_int(e: SdrError) -> c_int {
+    match e {
+        SdrError::DeviceNotFound => SDDC_ERROR_NO_DEVICE,
+        SdrError::NotSuperSpeed => SDDC_ERROR_USB_SPEED,
+        SdrError::DeviceOpenFailed(_) => SDDC_ERROR_OPEN,
+        SdrError::FirmwareVersionMismatch { .. } => SDDC_ERROR_FIRMWARE,
+        SdrError::CommunicationError(_) => SDDC_ERROR_IO,
+        SdrError::DeviceRunning => SDDC_ERROR_BUSY,
+        SdrError::AlreadyRunning => SDDC_ERROR_BUSY,
+        SdrError::InvalidParameter(_) => SDDC_ERROR_INVALID_PARAM,
+    }
+}
+
+/// Operation succeeded.
+#[allow(dead_code)]
+pub const SDDC_SUCCESS: c_int = 0;
+/// Null device handle or generic unspecified error.
+pub const SDDC_ERROR: c_int = -1;
+/// Setting cannot be changed while the device is streaming; stop with `sddc_cancel_async()` first.
+pub const SDDC_ERROR_BUSY: c_int = -2;
+/// A parameter value is out of the allowed range.
+pub const SDDC_ERROR_INVALID_PARAM: c_int = -3;
+/// USB transfer or firmware register communication failure.
+pub const SDDC_ERROR_IO: c_int = -4;
+/// No RX888-family device found at the requested index.
+pub const SDDC_ERROR_NO_DEVICE: c_int = -5;
+/// Device is present but not connected at SuperSpeed (USB 3.0).
+pub const SDDC_ERROR_USB_SPEED: c_int = -6;
+/// Firmware version on the device does not match the required version.
+pub const SDDC_ERROR_FIRMWARE: c_int = -7;
+/// USB device or interface could not be opened or claimed by the OS.
+pub const SDDC_ERROR_OPEN: c_int = -8;
+
+/// Callback function type for `sddc_read_async()`.
+///
+/// - `buf`: pointer to received samples as signed 16-bit integers (I only in direct-sampling mode)
+/// - `count`: number of samples in `buf`; 0 indicates a streaming error or end of stream
+/// - `ctx`: user context pointer passed to `sddc_read_async()`
 #[allow(non_camel_case_types)]
 pub type sddc_read_async_cb_t =
     Option<extern "C" fn(buf: *const i16, count: u32, ctx: *mut c_void)>;
@@ -142,7 +196,7 @@ pub extern "C" fn sddc_get_device_usb_strings(
                 write_empty_cstr(product);
                 write_empty_cstr(serial);
             }
-            return -1;
+            return SDDC_ERROR;
         }
     };
 
@@ -163,7 +217,8 @@ pub extern "C" fn sddc_get_device_usb_strings(
             write_empty_cstr(serial);
         }
     }
-    0
+
+    SDDC_SUCCESS
 }
 
 /// Get device index by USB serial string descriptor.
@@ -172,19 +227,19 @@ pub extern "C" fn sddc_get_device_usb_strings(
 ///
 /// Returns:
 /// - device index of first matching device
-/// - -1 if `serial` is NULL
-/// - -2 if no devices were found
-/// - -3 if devices were found, but none matched
+/// - SDDC_ERROR_INVALID_PARAM if `serial` is NULL
+/// - SDDC_ERROR_NO_DEVICE if no devices were found
+/// - SDDC_ERROR if devices were found, but none matched
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[unsafe(no_mangle)]
 pub extern "C" fn sddc_get_index_by_serial(serial: *const c_char) -> c_int {
     if serial.is_null() {
-        return -1;
+        return SDDC_ERROR_INVALID_PARAM;
     }
     let cstr = unsafe { std::ffi::CStr::from_ptr(serial) };
     let serial_str = match cstr.to_str() {
         Ok(s) => s,
-        Err(_) => return -1,
+        Err(_) => return SDDC_ERROR_INVALID_PARAM,
     };
 
     let mut idx = 0;
@@ -205,20 +260,27 @@ pub extern "C" fn sddc_get_index_by_serial(serial: *const c_char) -> c_int {
         idx += 1;
     }
 
-    if !found_any { -2 } else { -3 }
+    if !found_any { SDDC_ERROR_NO_DEVICE } else { SDDC_ERROR }
 }
 
 /// Open the device.
 ///
-/// - `dev`: output device handle pointer
-/// - `index`: device index
+/// - `dev`: output pointer that will receive the device handle on success
+/// - `index`: zero-based device index (use `sddc_get_device_count()` to enumerate)
 ///
-/// Returns: 0 on success.
+/// Returns:
+/// -  0 (`SDDC_SUCCESS`)           on success
+/// - -1 (`SDDC_ERROR`)             if `dev` is NULL
+/// - -4 (`SDDC_ERROR_IO`)          on USB communication failure
+/// - -5 (`SDDC_ERROR_NO_DEVICE`)   if no device is present at `index`
+/// - -6 (`SDDC_ERROR_USB_SPEED`)   if device is not connected at SuperSpeed (USB 3.0)
+/// - -7 (`SDDC_ERROR_FIRMWARE`)    if the firmware version does not match
+/// - -8 (`SDDC_ERROR_OPEN`)        if the OS denied access to the USB device
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[unsafe(no_mangle)]
 pub extern "C" fn sddc_open(dev: *mut *mut sddc_dev_t, index: u32) -> c_int {
     if dev.is_null() {
-        return -1;
+        return SDDC_ERROR;
     }
 
     if let Some(device) = Radio::find_device(index) {
@@ -228,10 +290,10 @@ pub extern "C" fn sddc_open(dev: *mut *mut sddc_dev_t, index: u32) -> c_int {
                 unsafe { *dev = Box::into_raw(Box::new(boxed)) as *mut sddc_dev_t };
                 0
             }
-            Err(_) => -1,
+            Err(e) => sdr_error_to_c_int(e),
         }
     } else {
-        -1
+        sdr_error_to_c_int(SdrError::DeviceNotFound)
     }
 }
 
@@ -244,7 +306,7 @@ pub extern "C" fn sddc_open(dev: *mut *mut sddc_dev_t, index: u32) -> c_int {
 #[unsafe(no_mangle)]
 pub extern "C" fn sddc_close(dev: *mut sddc_dev_t) -> c_int {
     if dev.is_null() {
-        return -1;
+        return SDDC_ERROR;
     }
     unsafe {
         let boxed = Box::from_raw(dev as *mut c_void as *mut Box<Radio>);
@@ -297,22 +359,25 @@ pub extern "C" fn sddc_get_usb_strings(
 /// Set ADC crystal oscillator frequency.
 /// At the SDR device level, xtal_freq equals the sample rate.
 ///
-/// Default is 62 MHz for most devices. Changing this affects
-/// bandwidth and usable frequency in direct sampling mode.
-/// Call only if you fully understand the implications.
+/// Default is 64 MHz for most models (61.44 MHz for RX888 PRO). Changing
+/// this value affects the usable bandwidth and frequency range in direct
+/// sampling mode. Must be called before `sddc_read_async()`; the setting
+/// cannot be changed while streaming.
 ///
 /// - `dev`: device handle
-/// - `rtl_freq`: ADC clock in Hz (sample rate)
+/// - `rtl_freq`: ADC clock frequency in Hz (equals the ADC sample rate)
 ///
-/// Returns: 0 on success.
+/// Returns:
+/// -  0 (`SDDC_SUCCESS`)     on success
+/// - -1 (`SDDC_ERROR`)       if `dev` is NULL
+/// - -2 (`SDDC_ERROR_BUSY`)  if device is currently streaming
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[unsafe(no_mangle)]
 pub extern "C" fn sddc_set_xtal_freq(dev: *mut sddc_dev_t, rtl_freq: u32) -> c_int {
     with_device!(dev, |device: &mut Radio| {
-        if device.set_xtal_freq(rtl_freq).is_ok() {
-            0
-        } else {
-            -1
+        match device.set_xtal_freq(rtl_freq) {
+            Ok(_) => 0,
+            Err(e) => sdr_error_to_c_int(e),
         }
     })
 }
@@ -320,14 +385,14 @@ pub extern "C" fn sddc_set_xtal_freq(dev: *mut sddc_dev_t, rtl_freq: u32) -> c_i
 /// Get ADC crystal oscillator frequency.
 ///
 /// - `dev`: device handle
-/// - `rtl_freq`: out pointer for ADC clock in Hz
+/// - `rtl_freq`: output pointer, receives the ADC clock frequency in Hz
 ///
-/// Returns: 0 on success.
+/// Returns: 0 (`SDDC_SUCCESS`) on success, -1 (`SDDC_ERROR`) if `dev` or `rtl_freq` is NULL.
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[unsafe(no_mangle)]
 pub extern "C" fn sddc_get_xtal_freq(dev: *mut sddc_dev_t, rtl_freq: *mut u32) -> c_int {
     if rtl_freq.is_null() {
-        return -1;
+        return SDDC_ERROR;
     }
     with_device_ref!(dev, |device: &Radio| {
         *rtl_freq = device.get_xtal_freq();
@@ -335,53 +400,65 @@ pub extern "C" fn sddc_get_xtal_freq(dev: *mut sddc_dev_t, rtl_freq: *mut u32) -
     })
 }
 
-/// Set the IF gain value.
+/// Set the IF (intermediate frequency) gain.
+///
+/// Value is in dB; valid range depends on device model and sampling mode.
+/// Use `sddc_get_if_gain_range()` and `sddc_get_if_gain_steps()` to query
+/// the allowed values. Applied immediately when streaming.
 ///
 /// - `dev`: device handle
-/// - `value`: gain value
+/// - `value`: gain in dB
 ///
-/// Returns: 0 on success.
+/// Returns:
+/// -  0 (`SDDC_SUCCESS`)    on success
+/// - -1 (`SDDC_ERROR`)      if `dev` is NULL
+/// - -4 (`SDDC_ERROR_IO`)   on USB communication failure when streaming
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[unsafe(no_mangle)]
 pub extern "C" fn sddc_set_if_gain(dev: *mut sddc_dev_t, value: f32) -> c_int {
     with_device!(dev, |device: &mut Radio| {
-        if device.set_if_gain(value).is_ok() {
-            0
-        } else {
-            -1
+        match device.set_if_gain(value) {
+            Ok(_) => 0,
+            Err(e) => sdr_error_to_c_int(e),
         }
     })
 }
 
-/// Set the RF gain value.
+/// Set the RF gain.
+///
+/// Value is in dB; valid range depends on device model and sampling mode.
+/// Use `sddc_get_rf_gain_range()` and `sddc_get_rf_gain_steps()` to query
+/// the allowed values. Applied immediately when streaming.
 ///
 /// - `dev`: device handle
-/// - `value`: gain value
+/// - `value`: gain in dB
 ///
-/// Returns: 0 on success.
+/// Returns:
+/// -  0 (`SDDC_SUCCESS`)    on success
+/// - -1 (`SDDC_ERROR`)      if `dev` is NULL
+/// - -4 (`SDDC_ERROR_IO`)   on USB communication failure when streaming
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[unsafe(no_mangle)]
 pub extern "C" fn sddc_set_rf_gain(dev: *mut sddc_dev_t, value: f32) -> c_int {
     with_device!(dev, |device: &mut Radio| {
-        if device.set_rf_gain(value).is_ok() {
-            0
-        } else {
-            -1
+        match device.set_rf_gain(value) {
+            Ok(_) => 0,
+            Err(e) => sdr_error_to_c_int(e),
         }
     })
 }
 
-/// Get the IF gain value.
+/// Get the current IF gain in dB.
 ///
 /// - `dev`: device handle
-/// - `value`: out pointer for gain value
+/// - `value`: output pointer, receives the IF gain in dB
 ///
-/// Returns: 0 on success.
+/// Returns: 0 (`SDDC_SUCCESS`) on success, -1 (`SDDC_ERROR`) if `dev` or `value` is NULL.
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[unsafe(no_mangle)]
 pub extern "C" fn sddc_get_if_gain(dev: *mut sddc_dev_t, value: *mut f32) -> c_int {
     if value.is_null() {
-        return -1;
+        return SDDC_ERROR;
     }
     with_device_ref!(dev, |device: &Radio| {
         *value = device.get_if_gain();
@@ -389,13 +466,13 @@ pub extern "C" fn sddc_get_if_gain(dev: *mut sddc_dev_t, value: *mut f32) -> c_i
     })
 }
 
-/// Get the IF gain range.
+/// Get the IF gain range supported by this device and sampling mode.
 ///
 /// - `dev`: device handle
-/// - `min`: out pointer for minimum value
-/// - `max`: out pointer for maximum value
+/// - `min`: output pointer, receives the minimum IF gain in dB
+/// - `max`: output pointer, receives the maximum IF gain in dB
 ///
-/// Returns: 0 on success.
+/// Returns: 0 (`SDDC_SUCCESS`) on success, -1 (`SDDC_ERROR`) if any pointer is NULL.
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[unsafe(no_mangle)]
 pub extern "C" fn sddc_get_if_gain_range(
@@ -404,7 +481,7 @@ pub extern "C" fn sddc_get_if_gain_range(
     max: *mut f32,
 ) -> c_int {
     if min.is_null() || max.is_null() {
-        return -1;
+        return SDDC_ERROR;
     }
     with_device_ref!(_dev, |device: &Radio| {
         let (mn, mx) = device.get_if_gain_range();
@@ -414,17 +491,19 @@ pub extern "C" fn sddc_get_if_gain_range(
     })
 }
 
-/// Get the IF gain steps.
+/// Get the discrete IF gain steps supported by this device and sampling mode.
+///
+/// The returned pointer points to a static array owned by the library; do not free it.
 ///
 /// - `dev`: device handle
-/// - `steps`: out pointer to a steps array
+/// - `steps`: output pointer, receives a pointer to an array of gain values in dB
 ///
-/// Returns: number of steps on success.
+/// Returns: number of entries in the steps array on success, -1 (`SDDC_ERROR`) if any pointer is NULL.
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[unsafe(no_mangle)]
 pub extern "C" fn sddc_get_if_gain_steps(_dev: *mut sddc_dev_t, steps: *mut *const f32) -> c_int {
     if steps.is_null() {
-        return -1;
+        return SDDC_ERROR;
     }
     with_device_ref!(_dev, |device: &Radio| {
         let slice = device.get_if_gain_steps();
@@ -433,17 +512,17 @@ pub extern "C" fn sddc_get_if_gain_steps(_dev: *mut sddc_dev_t, steps: *mut *con
     })
 }
 
-/// Get the RF gain value.
+/// Get the current RF gain in dB.
 ///
 /// - `dev`: device handle
-/// - `value`: out pointer for gain value
+/// - `value`: output pointer, receives the RF gain in dB
 ///
-/// Returns: 0 on success.
+/// Returns: 0 (`SDDC_SUCCESS`) on success, -1 (`SDDC_ERROR`) if `dev` or `value` is NULL.
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[unsafe(no_mangle)]
 pub extern "C" fn sddc_get_rf_gain(dev: *mut sddc_dev_t, value: *mut f32) -> c_int {
     if value.is_null() {
-        return -1;
+        return SDDC_ERROR;
     }
     with_device_ref!(dev, |device: &Radio| {
         *value = device.get_rf_gain();
@@ -451,13 +530,13 @@ pub extern "C" fn sddc_get_rf_gain(dev: *mut sddc_dev_t, value: *mut f32) -> c_i
     })
 }
 
-/// Get the RF gain range.
+/// Get the RF gain range supported by this device and sampling mode.
 ///
 /// - `dev`: device handle
-/// - `min`: out pointer for minimum value
-/// - `max`: out pointer for maximum value
+/// - `min`: output pointer, receives the minimum RF gain in dB
+/// - `max`: output pointer, receives the maximum RF gain in dB
 ///
-/// Returns: 0 on success.
+/// Returns: 0 (`SDDC_SUCCESS`) on success, -1 (`SDDC_ERROR`) if any pointer is NULL.
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[unsafe(no_mangle)]
 pub extern "C" fn sddc_get_rf_gain_range(
@@ -466,7 +545,7 @@ pub extern "C" fn sddc_get_rf_gain_range(
     max: *mut f32,
 ) -> c_int {
     if min.is_null() || max.is_null() {
-        return -1;
+        return SDDC_ERROR;
     }
     with_device_ref!(_dev, |device: &Radio| {
         let (mn, mx) = device.get_rf_gain_range();
@@ -476,17 +555,19 @@ pub extern "C" fn sddc_get_rf_gain_range(
     })
 }
 
-/// Get the RF gain steps.
+/// Get the discrete RF gain steps supported by this device and sampling mode.
+///
+/// The returned pointer points to a static array owned by the library; do not free it.
 ///
 /// - `dev`: device handle
-/// - `steps`: out pointer to a steps array
+/// - `steps`: output pointer, receives a pointer to an array of gain values in dB
 ///
-/// Returns: number of steps on success.
+/// Returns: number of entries in the steps array on success, -1 (`SDDC_ERROR`) if any pointer is NULL.
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[unsafe(no_mangle)]
 pub extern "C" fn sddc_get_rf_gain_steps(_dev: *mut sddc_dev_t, steps: *mut *const f32) -> c_int {
     if steps.is_null() {
-        return -1;
+        return SDDC_ERROR;
     }
     with_device_ref!(_dev, |device: &Radio| {
         let slice = device.get_rf_gain_steps();
@@ -495,22 +576,11 @@ pub extern "C" fn sddc_get_rf_gain_steps(_dev: *mut sddc_dev_t, steps: *mut *con
     })
 }
 
-/// Get the current center frequency in Hz.
-///
-/// - `dev`: device handle
-///
-/// Returns: frequency in Hz, or 0 on error.
-#[allow(clippy::not_unsafe_ptr_arg_deref)]
-#[unsafe(no_mangle)]
-pub extern "C" fn sddc_get_center_freq(dev: *mut sddc_dev_t) -> u32 {
-    sddc_get_center_freq64(dev) as u32
-}
-
 /// Get the current center frequency in Hz (64-bit).
 ///
 /// - `dev`: device handle
 ///
-/// Returns: frequency in Hz, or 0 on error.
+/// Returns: center frequency in Hz, or 0 if `dev` is NULL.
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[unsafe(no_mangle)]
 pub extern "C" fn sddc_get_center_freq64(dev: *mut sddc_dev_t) -> u64 {
@@ -523,49 +593,37 @@ pub extern "C" fn sddc_get_center_freq64(dev: *mut sddc_dev_t) -> u64 {
     }
 }
 
-/// Set the center frequency for the device.
-///
-/// - `dev`: device handle
-/// - `freq`: frequency in Hz
-///
-/// Returns:
-/// - 0 on success
-/// - -1 if frequency is out of range
-/// - -2 if setting requires stopping read first
-#[allow(clippy::not_unsafe_ptr_arg_deref)]
-#[unsafe(no_mangle)]
-pub extern "C" fn sddc_set_center_freq(dev: *mut sddc_dev_t, freq: u32) -> c_int {
-    sddc_set_center_freq64(dev, freq as u64)
-}
-
 /// Set the center frequency for the device (64-bit).
 ///
+/// May be called while streaming; the new frequency is applied immediately.
+/// In direct-sampling mode this parameter is informational only and does not
+/// affect hardware — the full ADC bandwidth is always captured.
+///
 /// - `dev`: device handle
-/// - `freq`: frequency in Hz
+/// - `freq`: center frequency in Hz
 ///
 /// Returns:
-/// - 0 on success
-/// - -1 if frequency is out of range
-/// - -2 if setting requires stopping read first
+/// -  0 (`SDDC_SUCCESS`)   on success
+/// - -1 (`SDDC_ERROR`)     if `dev` is NULL
+/// - -4 (`SDDC_ERROR_IO`)  on USB communication failure when streaming
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[unsafe(no_mangle)]
 pub extern "C" fn sddc_set_center_freq64(dev: *mut sddc_dev_t, freq: u64) -> c_int {
     with_device!(dev, |device: &mut Radio| {
-        if device.set_center_freq(freq).is_err() {
-            return -1;
+        match device.set_center_freq(freq) {
+            Ok(_) => 0,
+            Err(e) => sdr_error_to_c_int(e),
         }
-        0
     })
 }
 
-/// Get current sample rate in Hz.
+/// Get current ADC sample rate in Hz.
 ///
-/// Note: In raw mode, sample rate equals ADC XTAL frequency / 2.
+/// Equals the crystal oscillator frequency set via `sddc_set_xtal_freq()`.
 ///
 /// - `dev`: device handle
 ///
-/// Returns: sample rate in Hz, or 0 on error.
-/// At SDR device level, sample rate equals xtal_freq.
+/// Returns: sample rate in Hz, or 0 if `dev` is NULL.
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[unsafe(no_mangle)]
 pub extern "C" fn sddc_get_sample_rate(dev: *mut sddc_dev_t) -> u32 {
@@ -581,21 +639,26 @@ pub extern "C" fn sddc_get_sample_rate(dev: *mut sddc_dev_t) -> u32 {
 
 /// Enable or disable direct sampling mode.
 ///
-/// When enabled, ADC input is sent to the application without mixing
-/// or filtering. Useful for wideband reception.
+/// In direct-sampling mode the HF input is routed straight to the ADC,
+/// giving wideband coverage from DC to the Nyquist frequency. In tuner
+/// mode a downstream mixer/tuner covers VHF/UHF bands.
+/// This setting cannot be changed while streaming.
 ///
 /// - `dev`: device handle
-/// - `on`: 0 = disabled, 1 = enabled
+/// - `on`: 1 = direct sampling (HF), 0 = tuner path (VHF/UHF)
 ///
-/// Returns: 0 on success.
+/// Returns:
+/// -  0 (`SDDC_SUCCESS`)     on success
+/// - -1 (`SDDC_ERROR`)       if `dev` is NULL
+/// - -2 (`SDDC_ERROR_BUSY`)  if device is currently streaming
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[unsafe(no_mangle)]
 pub extern "C" fn sddc_set_direct_sampling(dev: *mut sddc_dev_t, on: c_int) -> c_int {
     with_device!(dev, |device: &mut Radio| {
-        if device.set_direct_sampling(on != 0).is_err() {
-            return -1;
+        match device.set_direct_sampling(on != 0) {
+            Ok(_) => 0,
+            Err(e) => sdr_error_to_c_int(e),
         }
-        0
     })
 }
 
@@ -603,12 +666,12 @@ pub extern "C" fn sddc_set_direct_sampling(dev: *mut sddc_dev_t, on: c_int) -> c
 ///
 /// - `dev`: device handle
 ///
-/// Returns: -1 on error, 0 = disabled, 1 = enabled.
+/// Returns: 1 if direct sampling is enabled, 0 if disabled, -1 (`SDDC_ERROR`) if `dev` is NULL.
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[unsafe(no_mangle)]
 pub extern "C" fn sddc_get_direct_sampling(dev: *mut sddc_dev_t) -> c_int {
     if dev.is_null() {
-        return -1;
+        return SDDC_ERROR;
     }
     unsafe {
         let device = sddc_dev_t::as_device_ref(dev);
@@ -616,13 +679,26 @@ pub extern "C" fn sddc_get_direct_sampling(dev: *mut sddc_dev_t) -> c_int {
     }
 }
 
-/// Read samples asynchronously; blocks until canceled via `sddc_cancel_async()`.
+/// Start asynchronous sample streaming.
+///
+/// Configures and starts the ADC, then blocks in the calling thread,
+/// invoking `cb` repeatedly with sample buffers until `sddc_cancel_async()`
+/// is called from another thread. When the callback receives `count == 0`,
+/// a streaming error has occurred.
+///
+/// All configuration (gain, frequency, crystal frequency, direct sampling)
+/// must be set before calling this function.
 ///
 /// - `dev`: device handle
-/// - `cb`: callback invoked with received samples, when count = 0, error happened
-/// - `ctx`: user context passed to callback
+/// - `cb`: callback function invoked with each batch of samples
+/// - `ctx`: user context pointer forwarded unchanged to every `cb` invocation
 ///
-/// Returns: 0 on success.
+/// Returns:
+/// -  0 (`SDDC_SUCCESS`)        on success (after streaming ends)
+/// - -1 (`SDDC_ERROR`)          if `dev` or `cb` is NULL
+/// - -2 (`SDDC_ERROR_BUSY`)     if streaming is already in progress
+/// - -4 (`SDDC_ERROR_IO`)       on USB communication failure during setup
+/// - -6 (`SDDC_ERROR_USB_SPEED`) if device is not at SuperSpeed
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[unsafe(no_mangle)]
 pub extern "C" fn sddc_read_async(
@@ -631,7 +707,7 @@ pub extern "C" fn sddc_read_async(
     ctx: *mut c_void,
 ) -> c_int {
     if dev.is_null() || cb.is_none() {
-        return -1;
+        return SDDC_ERROR;
     }
 
     // To satisfy Send/Sync, cast ctx to usize before moving into the closure.
@@ -656,95 +732,136 @@ pub extern "C" fn sddc_read_async(
     0
 }
 
-/// Cancel all pending asynchronous operations on the device.
+/// Stop asynchronous streaming started by `sddc_read_async()`.
+///
+/// Signals the streaming thread to stop, joins it, then powers down the ADC.
+/// Safe to call even if no streaming is in progress.
 ///
 /// - `dev`: device handle
 ///
-/// Returns: 0 on success.
+/// Returns:
+/// -  0 (`SDDC_SUCCESS`)   on success
+/// - -1 (`SDDC_ERROR`)     if `dev` is NULL
+/// - -4 (`SDDC_ERROR_IO`)  on USB communication failure during ADC shutdown
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[unsafe(no_mangle)]
 pub extern "C" fn sddc_cancel_async(dev: *mut sddc_dev_t) -> c_int {
     with_device!(dev, |device: &mut Radio| {
-        if device.read_cancel().is_err() {
-            return -1;
+        match device.read_cancel() {
+            Ok(_) => 0,
+            Err(e) => sdr_error_to_c_int(e),
         }
-        0
     })
 }
 
-/// Enable or disable the bias tee on GPIO PIN 0.
+/// Enable or disable the antenna bias-tee voltage.
+///
+/// The bias-tee supplies DC power to an active antenna or low-noise
+/// amplifier through the coax cable.
 ///
 /// - `dev`: device handle
-/// - `on`: 0 = off, 1 = HF on, 2 = VHF on, 3 = both on
+/// - `on`: bitmask — bit 0 = HF port bias, bit 1 = VHF/UHF port bias
+///   (0 = both off, 1 = HF on, 2 = VHF on, 3 = both on)
 ///
-/// Returns: -1 if device is not initialized, 0 otherwise.
+/// Returns:
+/// -  0 (`SDDC_SUCCESS`)   on success
+/// - -1 (`SDDC_ERROR`)     if `dev` is NULL
+/// - -3 (`SDDC_ERROR_INVALID_PARAM`) if an index is out of range
+/// - -4 (`SDDC_ERROR_IO`)  on USB communication failure
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[unsafe(no_mangle)]
 pub extern "C" fn sddc_enable_bias_tee(dev: *mut sddc_dev_t, on: c_int) -> c_int {
     with_device!(dev, |device: &mut Radio| {
-        let result = device.enable_antenna_bias(0, on & 0x01 != 0).is_ok()
-            && device.enable_antenna_bias(1, on & 0x02 != 0).is_ok();
-
-        if result { 0 } else { -1 }
+        if let Err(e) = device.enable_antenna_bias(0, on & 0x01 != 0) {
+            return sdr_error_to_c_int(e);
+        }
+        if let Err(e) = device.enable_antenna_bias(1, on & 0x02 != 0) {
+            return sdr_error_to_c_int(e);
+        }
+        0
     })
 }
 
 /// Enable or disable ADC dither.
 ///
-/// - `dev`: device handle
-/// - `on`: 0 = off, 1 = on
+/// Dither adds a small, shaped noise signal to the ADC input to reduce
+/// harmonic spurs at the cost of a slightly elevated noise floor.
+/// May be toggled while streaming; applied immediately.
 ///
-/// Returns: -1 if device is not initialized, 0 otherwise.
+/// - `dev`: device handle
+/// - `on`: 1 = enable dither, 0 = disable dither
+///
+/// Returns:
+/// -  0 (`SDDC_SUCCESS`)   on success
+/// - -1 (`SDDC_ERROR`)     if `dev` is NULL
+/// - -4 (`SDDC_ERROR_IO`)  on USB communication failure when streaming
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[unsafe(no_mangle)]
 pub extern "C" fn sddc_enable_adc_dither(dev: *mut sddc_dev_t, on: c_int) -> c_int {
     with_device!(dev, |device: &mut Radio| {
-        if device.enable_adc_dither(on != 0).is_err() {
-            return -1;
+        match device.enable_adc_dither(on != 0) {
+            Ok(_) => 0,
+            Err(e) => sdr_error_to_c_int(e),
         }
-        0
     })
 }
 
-/// Enable or disable ADC PGA
+/// Enable or disable the ADC programmable gain amplifier (PGA).
+///
+/// The PGA increases ADC input sensitivity. May be toggled while streaming;
+/// applied immediately.
 ///
 /// - `dev`: device handle
-/// - `on`: 0 = off, 1 = on
+/// - `on`: 1 = enable PGA, 0 = disable PGA
 ///
-/// Returns: -1 if device is not initialized, 0 otherwise.
+/// Returns:
+/// -  0 (`SDDC_SUCCESS`)   on success
+/// - -1 (`SDDC_ERROR`)     if `dev` is NULL
+/// - -4 (`SDDC_ERROR_IO`)  on USB communication failure when streaming
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[unsafe(no_mangle)]
 pub extern "C" fn sddc_enable_adc_pga(dev: *mut sddc_dev_t, on: c_int) -> c_int {
     with_device!(dev, |device: &mut Radio| {
-        if device.enable_adc_pga(on != 0).is_err() {
-            return -1;
+        match device.enable_adc_pga(on != 0) {
+            Ok(_) => 0,
+            Err(e) => sdr_error_to_c_int(e),
         }
-        0
     })
 }
 
-/// Enable or disable ADC RANDO, only enable this before start reading
+/// Enable or disable ADC output bit randomization (de-randomization applied on host).
+///
+/// When enabled, the ADC XORs each sample with a known pattern to reduce
+/// spectral leakage from the digital logic. The host driver automatically
+/// reverses the randomization before delivering samples to the callback.
+/// Must be set before calling `sddc_read_async()`; cannot be changed while streaming.
 ///
 /// - `dev`: device handle
-/// - `on`: 0 = off, 1 = on
+/// - `on`: 1 = enable randomization, 0 = disable
 ///
-/// Returns: -1 if device is not initialized or the device is busy, 0 otherwise.
+/// Returns:
+/// -  0 (`SDDC_SUCCESS`)     on success
+/// - -1 (`SDDC_ERROR`)       if `dev` is NULL
+/// - -2 (`SDDC_ERROR_BUSY`)  if device is currently streaming
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[unsafe(no_mangle)]
 pub extern "C" fn sddc_enable_adc_rando(dev: *mut sddc_dev_t, on: c_int) -> c_int {
     with_device!(dev, |device: &mut Radio| {
-        if device.enable_adc_rando(on != 0).is_err() {
-            return -1;
+        match device.enable_adc_rando(on != 0) {
+            Ok(_) => 0,
+            Err(e) => sdr_error_to_c_int(e),
         }
-        0
     })
 }
 
-/// Get firmware version in format 0xMMmm (MM=major, mm=minor).
+/// Get the installed firmware version as a packed 16-bit value.
+///
+/// Format: `0xMMmm` where `MM` is the major version and `mm` is the minor version.
+/// The current required version is defined at build time and enforced by `sddc_open()`.
 ///
 /// - `dev`: device handle
 ///
-/// Returns: version as 16-bit value.
+/// Returns: packed firmware version `(major << 8) | minor`, or 0 if `dev` is NULL.
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[unsafe(no_mangle)]
 pub extern "C" fn sddc_get_firmware_version(dev: *mut sddc_dev_t) -> u16 {
@@ -757,56 +874,77 @@ pub extern "C" fn sddc_get_firmware_version(dev: *mut sddc_dev_t) -> u16 {
     }
 }
 
-/// Enable or disable ADC RANDO, only enable this before start reading
+/// Enable or disable HF input high-impedance mode.
+///
+/// In high-Z mode the HF input is switched to a high-impedance termination
+/// for use with antennas that include their own preamplifier. In low-Z mode
+/// (default) the input is 50 Ω matched. May be toggled while streaming;
+/// applied immediately.
 ///
 /// - `dev`: device handle
-/// - `on`: 0 = off, 1 = on
+/// - `on`: 1 = high-Z input, 0 = 50 Ω input
 ///
-/// Returns: -1 if device is not initialized or the device is busy, 0 otherwise.
+/// Returns:
+/// -  0 (`SDDC_SUCCESS`)   on success
+/// - -1 (`SDDC_ERROR`)     if `dev` is NULL
+/// - -4 (`SDDC_ERROR_IO`)  on USB communication failure when streaming
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[unsafe(no_mangle)]
 pub extern "C" fn sddc_enable_hf_highz(dev: *mut sddc_dev_t, on: c_int) -> c_int {
     with_device!(dev, |device: &mut Radio| {
-        if device.enable_hf_highz(on != 0).is_err() {
-            return -1;
+        match device.enable_hf_highz(on != 0) {
+            Ok(_) => 0,
+            Err(e) => sdr_error_to_c_int(e),
         }
-        0
     })
 }
 
 /// Enable or disable external clock input (RX888 PRO only).
-/// When enabled, the device uses an external clock source instead of its internal crystal oscillator.
-/// This can be used to improve frequency stability or to synchronize multiple devices.
+///
+/// When enabled, the ADC clock is derived from a signal applied to the
+/// external clock input rather than the on-board crystal oscillator.
+/// Use this to phase-lock multiple units or improve long-term frequency
+/// accuracy with an external reference. May be changed while streaming;
+/// applied immediately.
 ///
 /// - `dev`: device handle
-/// - `on`: 0 = disabled, 1 = enabled
+/// - `on`: 1 = use external clock, 0 = use internal crystal
 ///
-/// Returns: -1 if device is not initialized, the device is not PRO, or the device is busy; 0 otherwise.
+/// Returns:
+/// -  0 (`SDDC_SUCCESS`)   on success
+/// - -1 (`SDDC_ERROR`)     if `dev` is NULL
+/// - -4 (`SDDC_ERROR_IO`)  on USB communication failure when streaming
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[unsafe(no_mangle)]
 pub extern "C" fn sddc_enable_ext_clock(dev: *mut sddc_dev_t, on: c_int) -> c_int {
     with_device!(dev, |device: &mut Radio| {
-        if device.enable_ext_clock(on != 0).is_err() {
-            return -1;
+        match device.enable_ext_clock(on != 0) {
+            Ok(_) => 0,
+            Err(e) => sdr_error_to_c_int(e),
         }
-        0
     })
 }
 
-/// Set ADC filter mode (RX888 PRO only).
+/// Set the ADC anti-aliasing filter mode (RX888 PRO only).
+///
+/// Selects between the on-board LPF options or bypass mode.
+/// May be changed while streaming; applied immediately.
 ///
 /// - `dev`: device handle
-/// - `mode`: filter mode
+/// - `mode`: one of `Freq64MHz`, `Freq32MHz`, `FMUndersample`, or `Bypass`
 ///
-/// Returns: -1 if device is not initialized or the device is not PRO, 0 otherwise.
+/// Returns:
+/// -  0 (`SDDC_SUCCESS`)   on success
+/// - -1 (`SDDC_ERROR`)     if `dev` is NULL
+/// - -4 (`SDDC_ERROR_IO`)  on USB communication failure when streaming
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[unsafe(no_mangle)]
 pub extern "C" fn sddc_set_adc_filter(dev: *mut sddc_dev_t, mode: crate::sdr::FilterMode) -> c_int {
     with_device!(dev, |device: &mut Radio| {
-        if device.set_adc_filter(mode).is_err() {
-            return -1;
+        match device.set_adc_filter(mode) {
+            Ok(_) => 0,
+            Err(e) => sdr_error_to_c_int(e),
         }
-        0
     })
 }
 
@@ -899,7 +1037,7 @@ mod sddc_tests {
     #[test]
     fn test_get_index_by_serial_null() {
         let ret = sddc_get_index_by_serial(std::ptr::null());
-        assert_eq!(ret, -1, "Null serial should return -1");
+        assert_eq!(ret, SDDC_ERROR_INVALID_PARAM, "Null serial should return SDDC_ERROR_INVALID_PARAM");
     }
 
     #[test]
@@ -1119,22 +1257,6 @@ mod sddc_tests {
 
     #[test]
     #[serial]
-    fn test_center_freq() {
-        let dev = create_test_device();
-
-        // Set center frequency
-        let ret = sddc_set_center_freq(dev, 14_070_000);
-        assert_eq!(ret, 0, "Should set center freq successfully");
-
-        // Get center frequency
-        let freq = sddc_get_center_freq(dev);
-        assert_eq!(freq, 14_070_000, "Frequency should match");
-
-        close_test_device(dev);
-    }
-
-    #[test]
-    #[serial]
     fn test_center_freq64() {
         let dev = create_test_device();
 
@@ -1151,12 +1273,6 @@ mod sddc_tests {
 
     #[test]
     fn test_center_freq_null_device() {
-        let ret = sddc_set_center_freq(std::ptr::null_mut(), 14_070_000);
-        assert_eq!(ret, -1);
-
-        let freq = sddc_get_center_freq(std::ptr::null_mut());
-        assert_eq!(freq, 0);
-
         let ret = sddc_set_center_freq64(std::ptr::null_mut(), 14_070_000);
         assert_eq!(ret, -1);
 

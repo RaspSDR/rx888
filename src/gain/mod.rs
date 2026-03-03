@@ -125,7 +125,7 @@ mod tests {
 
     #[test]
     fn test_hf_if_monotonic() {
-        for model in [RadioModel::RX888pro, RadioModel::RX888r2] {
+        for model in [RadioModel::RX888pro, RadioModel::RX888r2, RadioModel::RX888] {
             // HF generated steps should be monotonic increasing; map a few values
             let hf_user = get_rf_gain_steps(model, true);
             assert!(hf_user.len() >= 3);
