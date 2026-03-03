@@ -619,7 +619,7 @@ pub extern "C" fn sddc_get_direct_sampling(dev: *mut sddc_dev_t) -> c_int {
 /// Read samples asynchronously; blocks until canceled via `sddc_cancel_async()`.
 ///
 /// - `dev`: device handle
-/// - `cb`: callback invoked with received samples
+/// - `cb`: callback invoked with received samples, when count = 0, error happened
 /// - `ctx`: user context passed to callback
 ///
 /// Returns: 0 on success.
@@ -640,12 +640,14 @@ pub extern "C" fn sddc_read_async(
         let device = sddc_dev_t::as_device_mut(dev);
         device
             .as_mut()
-            .read_async(Box::new(move |data: &[i16]| {
+            .read_async(Box::new(move |data: Option<&[i16]>| {
                 let cb = cb.unwrap();
                 let ctx_ptr = ctx_val as *mut c_void;
                 // SAFETY: reinterpret i16 slice as u8 for C callback
-                let ptr = data.as_ptr();
-                let count = data.len() as u32;
+                let (ptr, count) = match data {
+                    Some(slice) => (slice.as_ptr(), slice.len() as u32),
+                    None => (std::ptr::null(), 0),
+                };
                 cb(ptr, count, ctx_ptr);
             }))
             .unwrap();

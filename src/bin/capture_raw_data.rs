@@ -66,10 +66,19 @@ fn main() -> Result<()> {
 
     // Start capture
     let start_time = std::time::Instant::now();
-    radio.read_async(Box::new(move |data: &[i16]| {
+    radio.read_async(Box::new(move |data: Option<&[i16]>| {
         if !running_clone.load(Ordering::Relaxed) {
             return;
         }
+
+        if data.is_none() {
+            // Error callback - stop the capture
+            println!("\n⚠ USB transfer error detected, stopping capture");
+            running_clone.store(false, Ordering::Relaxed);
+            return;
+        }
+
+        let data = data.unwrap();
 
         let current = samples_cap_clone.fetch_add(std::mem::size_of_val(data), Ordering::Relaxed);
 
@@ -98,7 +107,14 @@ fn main() -> Result<()> {
     }
 
     running.store(false, Ordering::Relaxed);
-    std::thread::sleep(std::time::Duration::from_millis(200));
+
+    for _ in 0..5 {
+        if !running.load(Ordering::Relaxed) {
+            break;
+        }
+        println!("Waiting for capture to stop...");
+        std::thread::sleep(std::time::Duration::from_millis(40));
+    }
 
     radio.read_cancel()?;
 

@@ -71,7 +71,7 @@ fn main() -> Result<()> {
     );
     println!("Press Ctrl+C to stop early\n");
 
-    radio.read_async(Box::new(move |data: &[i16]| {
+    radio.read_async(Box::new(move |data: Option<&[i16]>| {
         if !running_clone.load(Ordering::Relaxed) {
             return;
         }
@@ -83,9 +83,15 @@ fn main() -> Result<()> {
         }
         drop(first_time);
 
-        let len = data.len() * 2; // i16 samples, 2 bytes each
-        bytes_clone.fetch_add(len as u64, Ordering::Relaxed);
-        packets_clone.fetch_add(1, Ordering::Relaxed);
+        if let Some(data) = data {
+            let len = data.len() * 2; // i16 samples, 2 bytes each
+            bytes_clone.fetch_add(len as u64, Ordering::Relaxed);
+            packets_clone.fetch_add(1, Ordering::Relaxed);
+        } else {
+            // Error callback - stop the test
+            println!("\n⚠ USB transfer error detected, stopping test");
+            running_clone.store(false, Ordering::Relaxed);
+        }
     }))?;
 
     // Wait for first callback

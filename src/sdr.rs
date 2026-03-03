@@ -21,7 +21,7 @@ const BUILTIN_FIRMWARE: &[u8] = include_bytes!(concat!(
 
 /// Callback type for async read operations
 /// Receives a slice of received data
-pub type ReadCallback = Arc<dyn Fn(&[i16]) + Send + Sync>;
+pub type ReadCallback = Arc<dyn Fn(Option<&[i16]>) + Send + Sync>;
 
 #[derive(PartialEq)]
 enum DeviceState {
@@ -442,7 +442,7 @@ impl Radio {
     /// invoked from another thread. Validates SuperSpeed mode prior to start.
     pub fn read_async<F>(&mut self, callback: F) -> Result<()>
     where
-        F: Fn(&[i16]) + Send + Sync + 'static,
+        F: Fn(Option<&[i16]>) + Send + Sync + 'static,
     {
         // Check if already running
         if self.read_thread.is_some() {
@@ -730,7 +730,7 @@ impl AsyncReadWorker {
                         if self.rando_flag {
                             Self::derando_simd_x8(data);
                         }
-                        (self.callback)(data);
+                        (self.callback)(Some(data));
                     }
 
                     // Re-submit the buffer for further reading
@@ -739,6 +739,9 @@ impl AsyncReadWorker {
                 Err(e) => {
                     // Log error - some errors like stalls may be transient
                     log::warn!("USB transfer error: {}", e);
+
+                    // use None to signal error to callback, allowing it to clean up if needed
+                    (self.callback)(None);
 
                     // Don't re-submit on error as it may cause continuous errors
                     // The buffer is dropped and endpoint may need reset

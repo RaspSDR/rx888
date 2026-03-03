@@ -77,7 +77,7 @@ fn main() -> Result<()> {
     radio.set_rf_gain(0.0)?;
 
     // read async
-    radio.read_async(move |_data: &[i16]| {
+    radio.read_async(move |_data| {
         // No-op for scanning
     })?;
 
