@@ -260,7 +260,11 @@ pub extern "C" fn sddc_get_index_by_serial(serial: *const c_char) -> c_int {
         idx += 1;
     }
 
-    if !found_any { SDDC_ERROR_NO_DEVICE } else { SDDC_ERROR }
+    if !found_any {
+        SDDC_ERROR_NO_DEVICE
+    } else {
+        SDDC_ERROR
+    }
 }
 
 /// Open the device.
@@ -948,6 +952,42 @@ pub extern "C" fn sddc_set_adc_filter(dev: *mut sddc_dev_t, mode: crate::sdr::Fi
     })
 }
 
+/// set externion IO port state, only for RX888 PRO
+/// - `dev`: device handle
+/// - `state`: state to set (low 7 bits represent the state of 7 pins, high bit is reserved)
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+#[unsafe(no_mangle)]
+pub extern "C" fn sddc_set_ext_io_port_state(dev: *mut sddc_dev_t, state: u8) -> c_int {
+    with_device!(dev, |device: &mut Radio| {
+        match device.set_ext_gpio(state) {
+            Ok(_) => 0,
+            Err(e) => sdr_error_to_c_int(e),
+        }
+    })
+}
+
+// Enable or disable the ADC front-end preamplifier (RX888 PRO only).
+///
+/// The preamp boosts the ADC input sensitivity by about 20 dB at the cost of
+/// a slightly elevated noise floor. May be toggled while streaming; applied immediately.
+///
+/// - `dev`: device handle
+/// - `on`: 1 = enable preamp, 0 = disable preamp
+///   Returns:
+/// -  0 (`SDDC_SUCCESS`)   on success
+/// - -1 (`SDDC_ERROR`)     if `dev` is NULL
+/// - -4 (`SDDC_ERROR_IO`)  on USB communication failure when streaming
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+#[unsafe(no_mangle)]
+pub extern "C" fn sddc_enable_preamp(dev: *mut sddc_dev_t, on: c_int) -> c_int {
+    with_device!(dev, |device: &mut Radio| {
+        match device.enable_preamp(on != 0) {
+            Ok(_) => 0,
+            Err(e) => sdr_error_to_c_int(e),
+        }
+    })
+}
+
 #[cfg(test)]
 mod sddc_tests {
     use serial_test::serial;
@@ -1037,7 +1077,10 @@ mod sddc_tests {
     #[test]
     fn test_get_index_by_serial_null() {
         let ret = sddc_get_index_by_serial(std::ptr::null());
-        assert_eq!(ret, SDDC_ERROR_INVALID_PARAM, "Null serial should return SDDC_ERROR_INVALID_PARAM");
+        assert_eq!(
+            ret, SDDC_ERROR_INVALID_PARAM,
+            "Null serial should return SDDC_ERROR_INVALID_PARAM"
+        );
     }
 
     #[test]

@@ -198,8 +198,8 @@ impl Radio {
         let firmware_version = u16::from_be_bytes([bytes[1], bytes[2]]);
         let model = bytes[0];
 
-        let expected_version = ((interface::FIRMWARE_VER_MAJOR as u16) << 8)
-            | (interface::FIRMWARE_VER_MINOR as u16);
+        let expected_version =
+            ((interface::FIRMWARE_VER_MAJOR as u16) << 8) | (interface::FIRMWARE_VER_MINOR as u16);
 
         if firmware_version != expected_version {
             return Err(SdrError::FirmwareVersionMismatch {
@@ -654,7 +654,7 @@ impl Radio {
                 return Err(SdrError::InvalidParameter(format!(
                     "Invalid antenna bias index: {}",
                     index
-                )))
+                )));
             }
         };
 
@@ -731,6 +731,56 @@ impl Radio {
         let locked = (status & 0x2) != 0;
         let harmonic = (status & 0x4) != 0;
         Ok((locked, harmonic))
+    }
+
+    /// Set external GPIO state for the 7 GPIO pins on the I/O expander.
+    /// - `gpio_state`: 7-bit value representing the desired output state of the GPIO pins
+    ///
+    /// Returns: Result<(), SdrError>
+    ///
+    /// Note: Only bits 0-6 are valid for GPIO state; bit 7 is ignored.
+    pub fn set_ext_gpio(&mut self, gpio_state: u8) -> Result<(), SdrError> {
+        // Only bits 0-6 are valid for GPIO state
+        // return an error if invalid bits are set
+        if gpio_state & 0x80 != 0 {
+            return Err(SdrError::InvalidParameter(
+                "Invalid GPIO state: only bits 0-6 are valid".to_string(),
+            ));
+        }
+        let gpio_state = gpio_state & 0x7F;
+        Self::write_register(&self.interface, Register::REG_EXT_GPIO, gpio_state as u32)?;
+        Ok(())
+    }
+
+    /// Get current external GPIO state for the 7 GPIO pins on the I/O expander.
+    ///
+    /// Returns: Result<u8, SdrError>
+    ///     - 7-bit value representing the current output state of the GPIO pins
+    ///
+    /// Note: Only bits 0-6 are valid for GPIO state; bit 7 is always 0.
+    pub fn get_ext_gpio(&self) -> Result<u8, SdrError> {
+        let state = Self::read_register(&self.interface, Register::REG_EXT_GPIO)?;
+        Ok((state & 0x7F) as u8)
+    }
+
+    /// Enable or disable the preamplifier in direct sampling mode.
+    /// When enabled, the preamp is inserted in the signal path to provide gain
+    /// for weak signals. This setting applies both in direct sampling mode and tuner mode.
+    pub fn enable_preamp(&mut self, enable: bool) -> Result<(), SdrError> {
+        if self.direct_sampling {
+            Self::write_register(
+                &self.interface,
+                Register::REG_DIRECT_PREAMP,
+                if enable { 1 } else { 0 },
+            )?;
+        } else {
+            Self::write_register(
+                &self.interface,
+                Register::REG_TUNER_PREAMP,
+                if enable { 1 } else { 0 },
+            )?;
+        }
+        Ok(())
     }
 }
 

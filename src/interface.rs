@@ -50,6 +50,14 @@ pub enum Register {
     //           bit3 = PGA enable/disable |
     REG_ADC = 0x02,
 
+    /// External GPIO register for controlling GPIO output state.
+    ///
+    /// Allows read/write of GPIO pin states (7 pins) through the I/O expander.
+    ///
+    /// When writing:
+    /// - Bits 0-6 (0x7F): New GPIO output state to apply
+    REG_EXT_GPIO = 0x03,
+
     // direct sampling or tuner mode,
     // | Bit 0 (RW): Tuner Enable: 0 = Direct sampling, 1 = Tuner mode, (RW)
     // | Bit 1 (R_): PLL Lock : 0 = Unlock, 1 = Locked
@@ -61,10 +69,12 @@ pub enum Register {
     REG_DIRECT_ANT_BIAS = 0x92,
     // PRO ONLY: 0 - 64MHz (default), 1 - 32MHz, 2 - FM undersampling, 3 - Bypass mode
     REG_DIRECT_ADC_FILTER = 0x93,
+    REG_DIRECT_PREAMP = 0x98,
 
     REG_TUNER_IF_GAIN = 0xa0,
     REG_TUNER_RF_GAIN = 0xa1,
     REG_TUNER_ANT_BIAS = 0xa2,
+    REG_TUNER_PREAMP = 0xa8,
 
     // low 32bit of freq, up to 4.29GHz, this will impact IF frequency selection as well as preselector
     // if tuner is not active, this is no-op. Read value is undetermined

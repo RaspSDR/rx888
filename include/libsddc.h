@@ -80,8 +80,9 @@ typedef enum FilterMode {
  * All other API functions require this handle as their first argument.
  * The handle must not be shared across threads without external synchronization.
  */
-struct sddc_dev_t;
+typedef struct sddc_dev_t {
 
+} sddc_dev_t;
 
 /**
  * Callback function type for `sddc_read_async()`.
@@ -546,6 +547,27 @@ int sddc_enable_ext_clock(struct sddc_dev_t *dev, int on);
  * - -4 (`SDDC_ERROR_IO`)  on USB communication failure when streaming
  */
 int sddc_set_adc_filter(struct sddc_dev_t *dev, enum FilterMode mode);
+
+/**
+ * set externion IO port state, only for RX888 PRO
+ * - `dev`: device handle
+ * - `state`: state to set (low 7 bits represent the state of 7 pins, high bit is reserved)
+ */
+int sddc_set_ext_io_port_state(struct sddc_dev_t *dev, uint8_t state);
+
+/**
+ *
+ * The preamp boosts the ADC input sensitivity by about 20 dB at the cost of
+ * a slightly elevated noise floor. May be toggled while streaming; applied immediately.
+ *
+ * - `dev`: device handle
+ * - `on`: 1 = enable preamp, 0 = disable preamp
+ * Returns:
+ * -  0 (`SDDC_SUCCESS`)   on success
+ * - -1 (`SDDC_ERROR`)     if `dev` is NULL
+ * - -4 (`SDDC_ERROR_IO`)  on USB communication failure when streaming
+ */
+int sddc_enable_preamp(struct sddc_dev_t *dev, int on);
 
 #ifdef __cplusplus
 }  // extern "C"
