@@ -734,20 +734,20 @@ impl Radio {
     }
 
     /// Set external GPIO state for the 7 GPIO pins on the I/O expander.
-    /// - `gpio_state`: 7-bit value representing the desired output state of the GPIO pins
+    /// - `gpio_state`: 6-bit value representing the desired output state of the GPIO pins
     ///
     /// Returns: Result<(), SdrError>
     ///
     /// Note: Only bits 0-6 are valid for GPIO state; bit 7 is ignored.
     pub fn set_ext_gpio(&mut self, gpio_state: u8) -> Result<(), SdrError> {
-        // Only bits 0-6 are valid for GPIO state
+        // Only bits 0-5 are valid for GPIO state
         // return an error if invalid bits are set
-        if gpio_state & 0x80 != 0 {
+        if gpio_state & 0xC0 != 0 {
             return Err(SdrError::InvalidParameter(
-                "Invalid GPIO state: only bits 0-6 are valid".to_string(),
+                "Invalid GPIO state: only bits 0-5 are valid".to_string(),
             ));
         }
-        let gpio_state = gpio_state & 0x7F;
+        let gpio_state = gpio_state & 0x3F;
         Self::write_register(&self.interface, Register::REG_EXT_GPIO, gpio_state as u32)?;
         Ok(())
     }
