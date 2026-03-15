@@ -180,10 +180,6 @@ impl Radio {
     }
 
     pub(crate) fn new(device_info: DeviceInfo) -> Result<Self, SdrError> {
-        if device_info.speed() != Some(nusb::Speed::Super) {
-            return Err(SdrError::NotSuperSpeed);
-        }
-
         let device = device_info
             .open()
             .wait()
